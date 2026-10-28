@@ -189,6 +189,8 @@ class Fetcher(object):
             raise NewsError("HTTP %s for %s" % (exc.code, url))
         except urllib.error.URLError as exc:
             raise NewsError("could not reach %s: %s" % (url, exc.reason))
+        except OSError as exc:  # read timeouts, resets and TLS errors are not URLError
+            raise NewsError("timed out or dropped while reading %s: %s" % (url, exc))
 
 
 def yahoo_symbol(ticker):
@@ -392,7 +394,12 @@ def collect(fetcher, watch, state, sec=True, forms=("8-K",), count=10, errors=No
         except NewsError as exc:
             errors.append("SEC ticker list: %s" % exc)
             ciks = {}
+        sec_fails = 0
         for t in sorted(watch):
+            if sec_fails >= 2:
+                errors.append("SEC filings skipped for the remaining tickers: sec.gov is not responding. "
+                              "Tick 'Headlines only' or try again later.")
+                break
             cik = ciks.get(t)
             if not cik:
                 if ciks:
@@ -403,7 +410,9 @@ def collect(fetcher, watch, state, sec=True, forms=("8-K",), count=10, errors=No
                     data = fetcher.get(SEC_FEED % (cik, form, count),
                                        "sec-%s-%s.xml" % (form, cik), sec=True)
                     items += parse_sec_atom(data, t)
+                    sec_fails = 0
                 except NewsError as exc:
+                    sec_fails += 1
                     errors.append("SEC %s for %s: %s" % (form, t, exc))
     return items
 
