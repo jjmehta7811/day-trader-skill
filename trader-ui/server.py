@@ -13,6 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
+VERSION = "2026-10-28.4"
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 def T(name, label, flag=None, kind="text", ph="", options=None, positional=False, multi=False, required=False, default=""):
@@ -47,7 +48,8 @@ ACTIONS = {
         T("tickers", "Tickers", "--tickers", ph="TSLA NVDA", multi=True),
         T("hours", "Look back (hours)", "--hours", "number", ph="12"),
         T("no_sec", "Headlines only (skip SEC)", "--no-sec", "flag"),
-        T("all", "Include items already shown before", "--all", "flag")]),
+        T("all", "Include items already shown before", "--all", "flag"),
+        T("json", "", "--json", "hidden")]),
  "entry_check": dict(group="Plan", title="Entry timer", desc="Is the setup waiting, triggered or expired right now?",
      script="trader-entry/entry.py", sub=["check"], params=[SYM,
         T("setup", "Setup", "--setup", "select", options=["orb", "level"]),
@@ -117,6 +119,9 @@ def build_cmd(action, values):
     cmd, positional = [], []
     for p in spec["params"]:
         v = values.get(p["name"])
+        if p["kind"] == "hidden":
+            cmd.append(p["flag"])
+            continue
         if p["kind"] == "flag":
             if v in (True, "1", 1, "true", "on"):
                 cmd.append(p["flag"])
@@ -208,7 +213,7 @@ class H(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             return self._send(200, (HERE / "index.html").read_bytes(), "text/html")
         if path == "/api/spec":
-            return self._json(200, dict(actions=ACTIONS, workdir=str(self.workdir)))
+            return self._json(200, dict(actions=ACTIONS, workdir=str(self.workdir), version=VERSION))
         if path == "/api/config":
             cfg = self.read_cfg()
             return self._json(200, dict(keys=CONFIG_KEYS, config={k: cfg.get(k) for k in CONFIG_KEYS},

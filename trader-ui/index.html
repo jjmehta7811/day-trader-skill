@@ -88,6 +88,28 @@ table.rgrid{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5p
 details.raw{margin-top:12px;color:var(--mute);font-size:13px}
 details.raw pre{background:var(--out);color:var(--outink);padding:10px;border-radius:10px;overflow:auto;max-height:260px;font:12px/1.4 Consolas,Menlo,monospace}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:99px;font-size:13px;z-index:20}
+.out.brief{background:var(--card);color:var(--ink);border:1px solid var(--line);font:14px/1.45 system-ui,Segoe UI,sans-serif;white-space:normal}
+.brief h4{margin:0 0 6px;font-size:14px}
+.brief .sum{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:13.5px}
+.brief .sum td,.brief .sum th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.brief .sum th{font-size:12px;color:var(--mute);font-weight:600}
+.brief .sum td.why{white-space:normal;color:var(--mute)}
+.tk{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.tkh{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.tkh b{font-size:15px}
+.up{color:#0b7a4f}.dn{color:#c4320a}
+.verdict{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:99px;color:#fff;letter-spacing:.02em}
+.verdict.red{background:#c4320a}.verdict.amber{background:#b54708}.verdict.green{background:#0b7a4f}.verdict.grey{background:#667085}
+.brief ul{margin:4px 0 0;padding-left:20px}
+.brief li{margin:4px 0}
+.brief li .tm{color:var(--mute);font-size:12px;margin-right:6px}
+.brief li.flag a{font-weight:600}
+.brief a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--line)}
+.brief a:hover{text-decoration-color:var(--accent)}
+.brief .why2{color:var(--mute);font-size:13px;margin:2px 0 4px}
+.brief details{margin-top:6px;font-size:13px}
+.brief .fine{color:var(--mute);font-size:12px;margin-top:10px}
+.brief .tools{display:flex;gap:8px;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -109,7 +131,7 @@ details.raw pre{background:var(--out);color:var(--outink);padding:10px;border-ra
 </div>
 <script>
 const $=s=>document.querySelector(s);
-let SPEC=null, group="Guide", job=null, timer=null, curAction=null, lastOut="";
+let SPEC=null, group="Guide", job=null, timer=null, curAction=null, curVals={}, lastOut="";
 const GROUPS=["Guide","Find","Results","Plan","Size & check","Monitor","Research","Settings"];
 const FLOW=["1 Find","2 News","3 Entry","4 Exit plan","5 Time Machine","6 Size","7 Risk","8 Order in Claude"];
 
@@ -149,16 +171,23 @@ function renderGuide(){
 const LAB={breakout_20d:"20-day breakout",bull_flag:"Bull flag",reclaim_ma20:"Reclaimed 20-day avg",oversold:"Oversold",oversold_bounce:"Oversold bounce",orb:"Opening-range breakout"};
 const COLS={
  daily:[["symbol","Ticker"],["price","Price",1],["setups","Setups"],["rsi","RSI",1],["volume","Volume",1],["dollars","$ Traded",1],["close_date","Close date"]],
- orb:[["symbol","Ticker"],["price","Price",1],["at","Broke out at"],["or_low","Range low",1],["or_high","Range high",1],["pct_over","% over range",1]]};
+ orb:[["symbol","Ticker"],["price","Price",1],["at","Broke out at"],["or_low","Range low",1],["or_high","Range high",1],["range_pct","Range size",1],["pct_over","% over range",1],["stop","Stop (range mid)",1],["risk","Risk per share",1],["target","1R target",1]]};
 let WL=null, SEL=new Set(), sortKey=null, sortDir=1, qText="", setupF=new Set();
 const esc=x=>String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money=n=>n==null?"":"$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const big=n=>n==null?"":n>=1e9?"$"+(n/1e9).toFixed(2)+"B":"$"+(n/1e6).toFixed(1)+"M";
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2400)}
-function rv(h,k){return k==="dollars"?(h.volume!=null&&h.price!=null?h.price*h.volume:null):h[k]}
+function rv(h,k){
+  if(k==="dollars")return h.volume!=null&&h.price!=null?h.price*h.volume:null;
+  if(k==="range_pct")return h.or_high&&h.or_low&&h.price?(h.or_high-h.or_low)/h.price*100:null;
+  if(k==="stop")return h.or_high!=null&&h.or_low!=null?(h.or_high+h.or_low)/2:null;
+  if(k==="risk"){const s=rv(h,"stop");return s!=null&&h.price!=null?h.price-s:null}
+  if(k==="target"){const k2=rv(h,"risk");return k2!=null?h.price+k2:null}
+  return h[k]}
 function cellHtml(h,k){const v=rv(h,k);
  switch(k){case"symbol":return "<b>"+esc(v)+"</b>";
-  case"price":case"or_low":case"or_high":return money(v);
+  case"price":case"or_low":case"or_high":case"stop":case"risk":case"target":return money(v);
+  case"range_pct":return v==null?"":Number(v).toFixed(2)+"%";
   case"setups":return (v||[]).map(x=>'<span class="chip">'+esc(LAB[x]||x)+"</span>").join("");
   case"rsi":return v==null?"":'<span class="'+(v<30?"lo":"")+'">'+v+"</span>";
   case"volume":return v==null?"":Number(v).toLocaleString("en-US");
@@ -214,12 +243,57 @@ function draw(keepScroll){
   const all=rows.length&&rows.every(h=>SEL.has(h.symbol));$("#hdrchk").checked=!!all;
   $("#cnt").textContent=SEL.size+" ticked · "+rows.length+" of "+(WL.hits||[]).length+" shown";
 }
+const RED=["earnings","halt","risk","deal","legal","people"], AMB=["capital","regulatory","analyst"];
+const TAGWORD={earnings:"earnings",halt:"trading halt",risk:"risk event",deal:"deal / M&A",legal:"legal",people:"leadership change",capital:"dividend / buyback / offering",regulatory:"FDA / regulatory",analyst:"analyst action",macro:"market-wide"};
+function etTime(iso){if(!iso)return "";const d=new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso)?iso:iso+"Z");return new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}).format(d)}
+function safeUrl(u){return /^https?:\/\//i.test(u||"")?u:"#"}
+function bullet(it,flag){return `<li class="${flag?"flag":""}"><span class="tm">${esc(etTime(it.time))}</span><a href="${esc(safeUrl(it.link))}" target="_blank" rel="noopener noreferrer">${esc(it.title)}</a> ${(it.tags||[]).filter(t=>t!=="macro").map(t=>`<span class="chip">${esc(t)}</span>`).join("")}${/SEC/i.test(it.source||"")?'<span class="chip">SEC filing</span>':""}</li>`}
+function judge(items,mv){
+  const red={},amb={};
+  items.forEach(it=>{(it.tags||[]).forEach(t=>{if(RED.includes(t))red[t]=(red[t]||0)+1;else if(AMB.includes(t))amb[t]=(amb[t]||0)+1});if(it.important&&/SEC/i.test(it.source||""))red["8-K"]=(red["8-K"]||0)+1});
+  const parts=o=>Object.entries(o).map(([k,n])=>(TAGWORD[k]||k)+(n>1?" ×"+n:"")).join(", ");
+  if(Object.keys(red).length)return{v:"red",label:"RED FLAG",why:parts(red)};
+  const mov=mv&&mv.moving;
+  if(mov||Object.keys(amb).length){const w=[];if(mov)w.push("big move today ("+(mv.pct>0?"+":"")+mv.pct.toFixed(2)+"%)");if(Object.keys(amb).length)w.push(parts(amb));return{v:"amber",label:"CAUTION",why:w.join("; ")}}
+  if(!items.length&&!mv)return{v:"grey",label:"NO DATA",why:"nothing returned"};
+  return{v:"green",label:"NO FLAGS",why:"no earnings, deal, legal, halt or leadership headlines found"}}
+function showBrief(d,raw){
+  const o=$("#out");const items=d.items||[];const mvs={};(d.moves||[]).forEach(m=>mvs[m.ticker]=m);
+  const asked=String(curVals.tickers||"").toUpperCase().split(/[\s,]+/).filter(Boolean);
+  const seen=new Set(asked);Object.keys(mvs).forEach(t=>seen.add(t));items.forEach(i=>(i.touches&&i.touches.length?i.touches:[i.ticker]).forEach(t=>seen.add(t)));
+  const mkt=items.filter(i=>(i.tags||[]).includes("macro"));const own=items.filter(i=>!(i.tags||[]).includes("macro"));
+  const tk=[...seen].filter(t=>asked.length?asked.includes(t):true).sort((a,b)=>asked.indexOf(a)-asked.indexOf(b));
+  const rows=tk.map(t=>{const its=own.filter(i=>(i.touches&&i.touches.length?i.touches:[i.ticker]).includes(t));const jd=judge(its,mvs[t]);return{t,its,mv:mvs[t],jd}});
+  let h=`<div class="tools"><button class="mini" id="bcopy">Copy summary</button><button class="mini" id="braw">Show raw data</button></div>`;
+  if(!rows.length)h+=`<h4>Nothing new</h4><p>No headlines in the look-back window that you haven't already seen. Tick "Include items already shown before" or raise the hours, then Run again.</p>`;
+  else{
+    h+=`<h4>Summary</h4><table class="sum"><tr><th>Ticker</th><th>Price</th><th>Today</th><th>Verdict</th><th>Why</th></tr>`+rows.map(x=>`<tr><td><b>${esc(x.t)}</b></td><td>${x.mv?money(x.mv.price):""}</td><td class="${x.mv?(x.mv.pct>=0?"up":"dn"):""}">${x.mv?(x.mv.pct>0?"+":"")+x.mv.pct.toFixed(2)+"%":""}</td><td><span class="verdict ${x.jd.v}">${x.jd.label}</span></td><td class="why">${esc(x.jd.why)}</td></tr>`).join("")+`</table>`;
+    rows.forEach(x=>{
+      const flagged=x.its.filter(i=>(i.tags||[]).some(t=>RED.includes(t))||(i.important&&/SEC/i.test(i.source||"")));
+      const rest=x.its.filter(i=>!flagged.includes(i));
+      h+=`<div class="tk"><div class="tkh"><b>${esc(x.t)}</b>${x.mv?`<span>${money(x.mv.price)}</span><span class="${x.mv.pct>=0?"up":"dn"}">${x.mv.pct>0?"+":""}${x.mv.pct.toFixed(2)}%</span>`:""}${x.mv&&x.mv.moving?'<span class="chip">MOVING</span>':""}<span class="verdict ${x.jd.v}">${x.jd.label}</span></div><div class="why2">${esc(x.jd.why)} · ${x.its.length} headline${x.its.length===1?"":"s"}</div><ul>`;
+      if(flagged.length)h+=flagged.slice(0,6).map(i=>bullet(i,true)).join("");
+      h+=rest.slice(0,4).map(i=>bullet(i,false)).join("");
+      h+="</ul>";
+      const more=[...flagged.slice(6),...rest.slice(4)];
+      if(more.length)h+=`<details><summary>${more.length} more headline${more.length>1?"s":""}</summary><ul>${more.map(i=>bullet(i,false)).join("")}</ul></details>`;
+      if(!x.its.length)h+=`<div class="why2">No ticker-specific headlines in this window.</div>`;
+      h+=`</div>`});
+    if(mkt.length)h+=`<details class="tk"><summary><b>Market-wide headlines (${mkt.length})</b> Fed, macro, index roundups</summary><ul>${mkt.slice(0,15).map(i=>bullet(i,false)).join("")}</ul></details>`;
+  }
+  if((d.notes||[]).length)h+=`<div class="fine">${d.notes.map(esc).join("<br>")}</div>`;
+  h+=`<div class="fine">Verdicts come from keyword tags on headlines and SEC filings, not from reading the stories. A RED FLAG means open the headline and judge for yourself. A ticker can pick up another company's earnings headline. Not financial advice.</div>`;
+  o.innerHTML=h;o.classList.add("brief");o.scrollTop=0;
+  $("#bcopy").onclick=async()=>{const t=rows.map(x=>x.t+": "+x.jd.label+" ("+x.jd.why+")\n"+x.its.slice(0,6).map(i=>"  - "+etTime(i.time)+" "+i.title).join("\n")).join("\n\n");try{await navigator.clipboard.writeText(t);toast("Summary copied")}catch(e){toast("Copy blocked by the browser")}};
+  $("#braw").onclick=()=>{o.classList.remove("brief");o.textContent=raw};
+}
 function nav(){
   document.querySelector(".wrap").classList.toggle("wide",group==="Results");
   $("#nav").innerHTML=GROUPS.map(g=>`<button class="${g===group?'on':''}" data-g="${g}">${g}</button>`).join("");
   document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{group=b.dataset.g;nav();render()});
 }
 function field(a,p){
+  if(p.kind==="hidden") return "";
   const id=`${a}__${p.name}`;
   if(p.kind==="flag") return `<label class="chk" style="grid-column:1/-1"><input type="checkbox" id="${id}" ${p.default?'checked':''}> ${p.label}</label>`;
   if(p.kind==="select") return `<div><label>${p.label}</label><select id="${id}"><option value=""></option>${p.options.map(o=>`<option>${o}</option>`).join("")}</select></div>`;
@@ -234,7 +308,7 @@ function render(){
   if(group==="Find"||group==="Plan") html+=`<ul class="steps">${FLOW.map(s=>`<li>${s}</li>`).join("")}</ul>`;
   for(const [k,a] of Object.entries(SPEC.actions)){
     if(a.group!==group) continue;
-    const flags=a.params.filter(p=>p.kind==="flag"), rest=a.params.filter(p=>p.kind!=="flag");
+    const flags=a.params.filter(p=>p.kind==="flag"), rest=a.params.filter(p=>p.kind!=="flag"&&p.kind!=="hidden");
     html+=`<div class="card" id="card_${k}"><h3>${a.title}</h3>${WHEN[k]?`<div class="when">When: ${WHEN[k]}</div>`:""}<p>${a.desc}</p>
       ${rest.length||flags.length?`<div class="grid">${rest.map(p=>field(k,p)).join("")}${flags.map(p=>field(k,p)).join("")}</div>`:""}
       <button class="run" data-a="${k}">Run</button></div>`;
@@ -254,7 +328,7 @@ function collect(a){
 async function run(a){
   const r=await api("/api/run",{action:a,values:collect(a)});
   if(r.error){setStatus(r.error,"err");$("#out").textContent="Could not run: "+r.error;return}
-  job=r.job; curAction=a; $("#out").textContent="";
+  job=r.job; curAction=a; curVals=collect(a); $("#out").textContent=""; $("#out").classList.remove("brief");
   document.querySelectorAll(".run").forEach(b=>b.disabled=true);
   $("#stop").style.display="";
   clearInterval(timer); timer=setInterval(poll,700); poll();
@@ -269,6 +343,7 @@ async function poll(){
     clearInterval(timer);job=null;$("#stop").style.display="none";
     document.querySelectorAll(".run").forEach(b=>b.disabled=false);
     setStatus(r.code===0?"Done":(r.code===1&&/^(scan_(daily|orb)|news)$/.test(curAction||"")?"Done, nothing to show":"Finished with errors (exit "+r.code+")"),(r.code===0||(r.code===1&&/^(scan_(daily|orb)|news)$/.test(curAction||"")))?"":"err");
+    if(curAction==="news"){try{const d=JSON.parse(r.out);showBrief(d,r.out);return}catch(e){}}
     if(r.code===0&&/^scan_(daily|orb)$/.test(curAction||"")){jump("Results");toast("Scan finished: tick the names you want")}
   } else {
     setStatus("Running… "+r.elapsed+"s","busy");
@@ -298,7 +373,7 @@ async function refreshMode(){
   const r=await api("/api/config");const m=$("#mode");
   const paper=r.config.paper!==false;m.textContent=paper?"PAPER":"LIVE";m.className="badge "+(paper?"paper":"live");
 }
-(async()=>{SPEC=await api("/api/spec");$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
+(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-28.4"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
 </script>
 </body>
 </html>
