@@ -199,6 +199,12 @@ class H(BaseHTTPRequestHandler):
             cfg = self.read_cfg()
             return self._json(200, dict(keys=CONFIG_KEYS, config={k: cfg.get(k) for k in CONFIG_KEYS},
                                         exists=self.cfg_path().exists()))
+        if path in ("/api/watchlist", "/api/shortlist"):
+            f = self.workdir / "trader" / ("watchlist.json" if path.endswith("watchlist") else "shortlist.json")
+            try:
+                return self._json(200, json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"hits": [], "tickers": []})
+            except Exception as e:
+                return self._json(200, {"hits": [], "tickers": [], "error": str(e)})
         if path.startswith("/api/job/"):
             j = JOBS.get(path.rsplit("/", 1)[1])
             if not j: return self._json(404, {"error": "no such job"})
@@ -229,6 +235,14 @@ class H(BaseHTTPRequestHandler):
                 try: j["proc"].kill()
                 except Exception: pass
             return self._json(200, {"ok": True})
+        if path == "/api/shortlist":
+            tk = [str(t).upper() for t in (data.get("tickers") or [])]
+            if not tk or any(not re.match(r"^[A-Z0-9.\-]{1,10}$", t) for t in tk):
+                return self._json(400, {"error": "pick at least one valid ticker"})
+            (self.workdir / "trader").mkdir(exist_ok=True)
+            doc = {"created_by": "trader-ui", "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "tickers": tk}
+            (self.workdir / "trader" / "shortlist.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")
+            return self._json(200, {"ok": True, "count": len(tk)})
         if path == "/api/config":
             try:
                 cfg = self.read_cfg()

@@ -46,6 +46,48 @@ input:focus,select:focus{outline:2px solid var(--accent2);outline-offset:-1px}
 .status.run{color:var(--accent)}.status.err{color:#c4320a}
 .steps{counter-reset:s;margin:0 0 14px;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--mute)}
 .steps li{padding:3px 9px;border:1px solid var(--line);border-radius:99px;background:var(--card)}
+.guide .step{display:grid;grid-template-columns:118px 1fr auto;gap:12px;align-items:center;padding:11px 14px;border:1px solid var(--line);background:var(--card);border-radius:12px;margin-bottom:8px}
+.guide .step.now{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.guide .time{font-weight:650;font-size:13.5px}
+.guide .time small{display:block;font-weight:400;color:var(--mute);font-size:12px}
+.guide .what b{display:block}
+.guide .what span{color:var(--mute);font-size:13.5px}
+.nowtag{display:inline-block;background:var(--accent);color:#fff;font-size:11px;padding:1px 7px;border-radius:99px;margin-left:6px;vertical-align:middle}
+.go{white-space:nowrap}
+.when{display:inline-block;font-size:12px;color:var(--accent);border:1px solid var(--accent);border-radius:99px;padding:1px 9px;margin:0 0 8px}
+.flash{animation:fl 1.6s}
+@keyframes fl{0%,60%{box-shadow:0 0 0 3px var(--accent2)}100%{box-shadow:none}}
+.banner{padding:10px 14px;border-radius:10px;background:var(--card);border:1px solid var(--line);margin-bottom:12px;font-size:14px}
+@media(max-width:700px){.guide .step{grid-template-columns:1fr}}
+.wrap.wide{grid-template-columns:190px minmax(0,1fr)}
+.wrap.wide .outcol{display:none}
+@media(max-width:700px){.wrap.wide{grid-template-columns:1fr}}
+.meta{color:var(--mute);font-size:13px;margin:0 0 10px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.toolbar input[type=text]{width:150px}
+.mini{padding:6px 12px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;font:inherit;font-size:13px;cursor:pointer}
+.mini:hover{border-color:var(--accent)}
+.mini.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.mini.act{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+.mini:disabled{opacity:.45;cursor:default}
+.sep{width:1px;height:22px;background:var(--line)}
+.tbl-wrap{overflow:auto;max-height:calc(100vh - 300px);min-height:200px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table.rgrid{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px}
+.rgrid th{position:sticky;top:0;z-index:1;background:var(--card);text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none;font-size:12px;color:var(--mute);font-weight:600}
+.rgrid th.sorted{color:var(--ink)}
+.rgrid th.nosort{cursor:default}
+.rgrid td{padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.rgrid tr:hover td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.rgrid tr.sel td{background:color-mix(in srgb,var(--accent) 13%,transparent)}
+.rgrid .num{text-align:right;font-variant-numeric:tabular-nums}
+.rgrid input[type=checkbox]{width:17px;height:17px;cursor:pointer;accent-color:var(--accent)}
+.chip{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);background:var(--bg);margin-right:3px}
+.lo{color:var(--warn);font-weight:700}
+.go2{padding:2px 9px;font-size:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;cursor:pointer;margin-right:4px}
+.go2:hover{border-color:var(--accent);color:var(--accent)}
+details.raw{margin-top:12px;color:var(--mute);font-size:13px}
+details.raw pre{background:var(--out);color:var(--outink);padding:10px;border-radius:10px;overflow:auto;max-height:260px;font:12px/1.4 Consolas,Menlo,monospace}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:99px;font-size:13px;z-index:20}
 </style>
 </head>
 <body>
@@ -53,7 +95,7 @@ input:focus,select:focus{outline:2px solid var(--accent2);outline-offset:-1px}
   <h1>Day Trader</h1>
   <span id="mode" class="badge">…</span>
   <span class="spacer"></span>
-  <span class="wd" id="wd"></span>
+  <span class="badge" id="clock"></span><span class="wd" id="wd"></span>
 </header>
 <div class="wrap">
   <nav id="nav"></nav>
@@ -67,13 +109,110 @@ input:focus,select:focus{outline:2px solid var(--accent2);outline-offset:-1px}
 </div>
 <script>
 const $=s=>document.querySelector(s);
-let SPEC=null, group="Find", job=null, timer=null;
-const GROUPS=["Find","Plan","Size & check","Monitor","Research","Settings"];
+let SPEC=null, group="Guide", job=null, timer=null, curAction=null, lastOut="";
+const GROUPS=["Guide","Find","Results","Plan","Size & check","Monitor","Research","Settings"];
 const FLOW=["1 Find","2 News","3 Entry","4 Exit plan","5 Time Machine","6 Size","7 Risk","8 Order in Claude"];
 
 async function api(p,body){const r=await fetch(p,body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:undefined);return r.json()}
 
+const WHEN={scan_universe:"Once, then weekly",scan_orb:"Best at 10:15 AM ET or later",scan_daily:"Before 9:30 AM ET (pre-market)",news:"10:15 AM ET, for each ticker you shortlist",entry_check:"10:15 AM ET onward, until it says triggered",exit_plan:"Right after Entry says triggered",plan_show:"Any time",tm_run:"After the Exit plan, before you size",tm_chart:"Any time after Time Machine",size:"After Time Machine",risk:"After Size, before any order",tickets:"After Risk says PASS",alerts_clock:"Any time",alerts_quote:"While a trade is open",alerts_list:"While a trade is open",alerts_check:"Every few minutes while a trade is open",analyst:"Any time, ideally before the open",pelosi_index:"Any time",pelosi_new:"Any time"};
+// [startMin, endMin] in New York minutes since midnight; null = no time window
+const GUIDE=[
+ {t:"One time",sub:"before anything else",w:null,title:"Save your settings",how:"Click Settings in the left menu. Type your name and email in the SEC box, keep Paper trading ticked, click Save settings.",go:["Settings",null,"Go to Settings"]},
+ {t:"One time",sub:"then weekly",w:null,title:"Download the stock list",how:"Left menu: Find. On the card Download stock list, click Run. Takes about a minute.",go:["Find","scan_universe","Go to card"]},
+ {t:"Before 9:30 AM",sub:"optional",w:[480,570],title:"Look at pre-market setups",how:"Find, then the Daily setups card, then Run (1 to 3 minutes). When it finishes you land on Results: tick the names you like and click Send to News.",go:["Find","scan_daily","Go to card"]},
+ {t:"9:30 to 10:15 AM",sub:"wait",w:[570,615],title:"Do nothing: the opening range is forming",how:"The first 15 minutes set the range. Do not enter yet.",go:null},
+ {t:"10:15 AM",sub:"scan",w:[615,630],title:"Scan for breakouts",how:"Find, then Opening-range breakouts, then Run. You land on Results: tick one to three names, then click Send to News.",go:["Find","scan_orb","Go to card"]},
+ {t:"10:15 to 10:30 AM",sub:"check news",w:[615,630],title:"Check the news on each pick",how:"Find, then News monitor, type the ticker, Run. Skip the stock if you see earnings, a deal, an 8-K or a halt.",go:["Find","news","Go to card"]},
+ {t:"10:15 AM onward",sub:"entry",w:[615,810],title:"Ask the Entry timer",how:"Plan, then Entry timer, type the ticker, keep Save result ticked, Run. You need the word triggered. If it says waiting, run it again in a few minutes. If expired, skip it.",go:["Plan","entry_check","Go to card"]},
+ {t:"When triggered",sub:"plan the exit",w:[615,810],title:"Set the stop and target",how:"Plan, then Exit planner. Leave the boxes empty and click Run. It reads your saved entry.",go:["Plan","exit_plan","Go to card"]},
+ {t:"Then",sub:"odds",w:[615,810],title:"Run the Time Machine",how:"Plan, then Time Machine, Run. Read the odds. If it is close to a coin flip, skipping is a fine choice.",go:["Plan","tm_run","Go to card"]},
+ {t:"Then",sub:"size",w:[615,810],title:"Size the position",how:"Size & check, then Budget, Run. It gives shares so your loss at the stop stays within your limit.",go:["Size & check","size","Go to card"]},
+ {t:"Then",sub:"risk",w:[615,810],title:"Run the Risk check",how:"Size & check, then Risk check, Run. You need PASS. BLOCK tells you why.",go:["Size & check","risk","Go to card"]},
+ {t:"Only after PASS",sub:"your yes",w:[615,930],title:"Order in Claude, not here",how:"Click Show order tickets to read the ticket. Then go to Claude and type yes for that exact order. Keep the broker on Paper.",go:["Size & check","tickets","Go to card"]},
+ {t:"While a trade is open",sub:"every few minutes",w:[615,955],title:"Watch it",how:"Monitor, then Check alerts now, Run. It rings when the stop, target or flat-by time hits.",go:["Monitor","alerts_check","Go to card"]},
+ {t:"3:55 PM",sub:"flat by",w:[955,960],title:"Be flat before the close",how:"Close anything still open in your broker. The tool blocks new entries after 3:30 PM.",go:["Monitor","alerts_clock","Check the clock"]}
+];
+function etMin(){const f=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",hour12:false,weekday:"short"}).formatToParts(new Date());const g=k=>f.find(x=>x.type===k).value;return{m:(+g("hour")%24)*60+ +g("minute"),wd:g("weekday"),txt:g("hour")+":"+g("minute")}}
+function tickClock(){const e=etMin();const open=!["Sat","Sun"].includes(e.wd)&&e.m>=570&&e.m<960;$("#clock").textContent=e.txt+" ET · market "+(open?"OPEN":"closed");if(group==="Guide")markNow()}
+function markNow(){const e=etMin();document.querySelectorAll(".guide .step").forEach((el,i)=>{const w=GUIDE[i].w;const on=w&&e.m>=w[0]&&e.m<w[1]&&!["Sat","Sun"].includes(e.wd);el.classList.toggle("now",!!on);const tg=el.querySelector(".nowtag");if(on&&!tg)el.querySelector(".time").insertAdjacentHTML("afterbegin",'<span class="nowtag">NOW</span> ');if(!on&&tg)tg.remove()})}
+function jump(g,card){group=g;nav();render();if(card){const el=document.getElementById("card_"+card);if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.classList.add("flash");setTimeout(()=>el.classList.remove("flash"),1700)}}}
+function renderGuide(){
+  const e=etMin();const weekend=["Sat","Sun"].includes(e.wd);
+  let h=`<div class="banner"><b>Today's guide.</b> Work down the list in order, one stock at a time. Times are New York time. ${weekend?"Markets are closed today, so scans will show old data.":"The step marked NOW is the one to do at this moment."}</div><div class="guide">`;
+  GUIDE.forEach((g,i)=>{h+=`<div class="step"><div class="time">${g.t}<small>${g.sub}</small></div><div class="what"><b>${i+1}. ${g.title}</b><span>${g.how}</span></div>${g.go?`<button class="run go" data-i="${i}">${g.go[2]}</button>`:"<span></span>"}</div>`});
+  h+=`</div><div class="note">Nothing here places or approves an order. That always happens in Claude with your typed yes.</div>`;
+  $("#main").innerHTML=h;
+  document.querySelectorAll(".go").forEach(b=>b.onclick=()=>{const g=GUIDE[+b.dataset.i].go;jump(g[0],g[1])});
+  markNow();
+}
+const LAB={breakout_20d:"20-day breakout",bull_flag:"Bull flag",reclaim_ma20:"Reclaimed 20-day avg",oversold:"Oversold",oversold_bounce:"Oversold bounce",orb:"Opening-range breakout"};
+const COLS={
+ daily:[["symbol","Ticker"],["price","Price",1],["setups","Setups"],["rsi","RSI",1],["volume","Volume",1],["dollars","$ Traded",1],["close_date","Close date"]],
+ orb:[["symbol","Ticker"],["price","Price",1],["at","Broke out at"],["or_low","Range low",1],["or_high","Range high",1],["pct_over","% over range",1]]};
+let WL=null, SEL=new Set(), sortKey=null, sortDir=1, qText="", setupF=new Set();
+const esc=x=>String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>n==null?"":"$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const big=n=>n==null?"":n>=1e9?"$"+(n/1e9).toFixed(2)+"B":"$"+(n/1e6).toFixed(1)+"M";
+function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2400)}
+function rv(h,k){return k==="dollars"?(h.volume!=null&&h.price!=null?h.price*h.volume:null):h[k]}
+function cellHtml(h,k){const v=rv(h,k);
+ switch(k){case"symbol":return "<b>"+esc(v)+"</b>";
+  case"price":case"or_low":case"or_high":return money(v);
+  case"setups":return (v||[]).map(x=>'<span class="chip">'+esc(LAB[x]||x)+"</span>").join("");
+  case"rsi":return v==null?"":'<span class="'+(v<30?"lo":"")+'">'+v+"</span>";
+  case"volume":return v==null?"":Number(v).toLocaleString("en-US");
+  case"dollars":return big(v);
+  case"pct_over":return v==null?"":"+"+Number(v).toFixed(2)+"%";
+  default:return v==null?"":esc(v)}}
+function selKey(){return "sel:"+(WL&&WL.created_at||"")}
+function saveSel(){try{localStorage.setItem(selKey(),JSON.stringify([...SEL]))}catch(e){}}
+function loadSel(){try{return new Set(JSON.parse(localStorage.getItem(selKey())||"[]"))}catch(e){return new Set()}}
+function shown(){
+  const hits=WL.hits||[], mode=WL.mode==="orb"?"orb":"daily";
+  let rows=hits.filter(h=>(!qText||h.symbol.includes(qText))&&(!setupF.size||(h.setups||[]).some(x=>setupF.has(x))));
+  if(sortKey){const f=a=>{const v=rv(a,sortKey);return Array.isArray(v)?v.join(","):v};
+    rows=rows.slice().sort((a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (x<y?-1:x>y?1:0)*sortDir})}
+  return rows}
+async function renderResults(){
+  const m=$("#main");m.innerHTML='<div class="banner">Loading results…</div>';
+  WL=await api("/api/watchlist");
+  const hits=WL.hits||[];
+  if(!hits.length){m.innerHTML='<div class="card"><h3>No scan results yet</h3><p>Run Daily setups (before 9:30 AM ET) or Opening-range breakouts (10:15 AM ET onward) first. The table appears here when the scan finishes.</p><button class="run" id="gofind">Go to Find</button></div>'+rawBlock();$("#gofind").onclick=()=>jump("Find");return}
+  const mode=WL.mode==="orb"?"orb":"daily";SEL=loadSel();qText="";setupF=new Set();sortKey=null;sortDir=1;
+  const chips=mode==="daily"?Object.keys(LAB).filter(k=>k!=="orb"&&hits.some(h=>(h.setups||[]).includes(k))):[];
+  m.innerHTML=`<p class="meta"><b>${mode==="orb"?"Opening-range breakouts":"Daily setups"}</b> · ${hits.length} hits · ${WL.as_of?WL.as_of+" · ":""}scanned ${WL.scanned||"?"} of ${WL.universe||"?"} · saved ${esc((WL.created_at||"").replace("T"," ").replace("Z"," UTC"))}</p>
+  <div class="toolbar"><input type="text" id="q" placeholder="Search ticker"> ${chips.map(k=>`<button class="mini chipf" data-k="${k}">${LAB[k]}</button>`).join("")}${chips.length?'<span class="sep"></span>':""}
+   <button class="mini" id="top10">Select top 10 shown</button><button class="mini" id="selall">Select all shown</button><button class="mini" id="clr">Clear</button><span class="sep"></span>
+   <span id="cnt" class="status"></span></div>
+  <div class="toolbar"><button class="mini act" id="toNews">Send to News</button><button class="mini act" id="shortlist">Save shortlist</button><button class="mini" id="copyT">Copy tickers</button><span class="status">Sort by clicking a column heading.</span></div>
+  <div class="tbl-wrap"><table class="rgrid"><thead><tr><th class="nosort"><input type="checkbox" id="hdrchk" title="Select all shown"></th>${COLS[mode].map(c=>`<th class="${c[2]?"num":""}" data-k="${c[0]}">${c[1]}<span class="arr"></span></th>`).join("")}<th class="nosort">Next step</th></tr></thead><tbody id="tb"></tbody></table></div>${rawBlock()}`;
+  $("#q").oninput=e=>{qText=e.target.value.trim().toUpperCase();draw()};
+  document.querySelectorAll(".chipf").forEach(b=>b.onclick=()=>{const k=b.dataset.k;setupF.has(k)?setupF.delete(k):setupF.add(k);b.classList.toggle("on");draw()});
+  document.querySelectorAll(".rgrid th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortKey===k)sortDir=-sortDir;else{sortKey=k;sortDir=th.classList.contains("num")?-1:1}draw()});
+  $("#top10").onclick=()=>{shown().slice(0,10).forEach(h=>SEL.add(h.symbol));saveSel();draw()};
+  $("#selall").onclick=()=>{shown().forEach(h=>SEL.add(h.symbol));saveSel();draw()};
+  $("#clr").onclick=()=>{SEL.clear();saveSel();draw()};
+  $("#hdrchk").onchange=e=>{shown().forEach(h=>e.target.checked?SEL.add(h.symbol):SEL.delete(h.symbol));saveSel();draw()};
+  $("#toNews").onclick=()=>{if(!SEL.size)return toast("Tick at least one ticker first");sendTo("news","tickers","Find",[...SEL])};
+  $("#copyT").onclick=async()=>{if(!SEL.size)return toast("Tick at least one ticker first");try{await navigator.clipboard.writeText([...SEL].join(" "));toast("Copied "+SEL.size+" tickers")}catch(e){toast("Copy blocked by the browser")}};
+  $("#shortlist").onclick=async()=>{if(!SEL.size)return toast("Tick at least one ticker first");const r=await api("/api/shortlist",{tickers:[...SEL]});toast(r.error||("Saved "+r.count+" tickers to trader/shortlist.json"))};
+  $("#tb").onclick=e=>{const t=e.target;
+    if(t.matches("input.rc")){t.checked?SEL.add(t.dataset.s):SEL.delete(t.dataset.s);saveSel();draw(true)}
+    else if(t.matches(".go2")){sendTo(t.dataset.c,t.dataset.f,t.dataset.g,[t.dataset.s])}};
+  draw();
+}
+function rawBlock(){return lastOut?`<details class="raw"><summary>Raw scan log</summary><pre>${esc(lastOut)}</pre></details>`:""}
+function sendTo(card,field,grp,tickers){jump(grp,card);const el=document.getElementById(card+"__"+field);if(el)el.value=tickers.join(" ");toast(tickers.length+" ticker"+(tickers.length>1?"s":"")+" filled in: now click Run")}
+function draw(keepScroll){
+  const mode=WL.mode==="orb"?"orb":"daily", rows=shown(), cols=COLS[mode];
+  $("#tb").innerHTML=rows.map(h=>`<tr class="${SEL.has(h.symbol)?"sel":""}"><td><input type="checkbox" class="rc" data-s="${esc(h.symbol)}" ${SEL.has(h.symbol)?"checked":""}></td>${cols.map(c=>`<td class="${c[2]?"num":""}">${cellHtml(h,c[0])}</td>`).join("")}<td><button class="go2" data-s="${esc(h.symbol)}" data-c="news" data-f="tickers" data-g="Find">News</button><button class="go2" data-s="${esc(h.symbol)}" data-c="entry_check" data-f="symbol" data-g="Plan">Entry</button></td></tr>`).join("")||`<tr><td colspan="${cols.length+2}" style="padding:18px;color:var(--mute)">No rows match the filter.</td></tr>`;
+  document.querySelectorAll(".rgrid th[data-k]").forEach(th=>{th.classList.toggle("sorted",th.dataset.k===sortKey);th.querySelector(".arr").textContent=th.dataset.k===sortKey?(sortDir>0?" ▲":" ▼"):""});
+  const all=rows.length&&rows.every(h=>SEL.has(h.symbol));$("#hdrchk").checked=!!all;
+  $("#cnt").textContent=SEL.size+" ticked · "+rows.length+" of "+(WL.hits||[]).length+" shown";
+}
 function nav(){
+  document.querySelector(".wrap").classList.toggle("wide",group==="Results");
   $("#nav").innerHTML=GROUPS.map(g=>`<button class="${g===group?'on':''}" data-g="${g}">${g}</button>`).join("");
   document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{group=b.dataset.g;nav();render()});
 }
@@ -85,13 +224,15 @@ function field(a,p){
 }
 function render(){
   const m=$("#main");
+  if(group==="Guide") return renderGuide();
+  if(group==="Results") return renderResults();
   if(group==="Settings") return renderSettings();
   let html="";
   if(group==="Find"||group==="Plan") html+=`<ul class="steps">${FLOW.map(s=>`<li>${s}</li>`).join("")}</ul>`;
   for(const [k,a] of Object.entries(SPEC.actions)){
     if(a.group!==group) continue;
     const flags=a.params.filter(p=>p.kind==="flag"), rest=a.params.filter(p=>p.kind!=="flag");
-    html+=`<div class="card"><h3>${a.title}</h3><p>${a.desc}</p>
+    html+=`<div class="card" id="card_${k}"><h3>${a.title}</h3>${WHEN[k]?`<div class="when">When: ${WHEN[k]}</div>`:""}<p>${a.desc}</p>
       ${rest.length||flags.length?`<div class="grid">${rest.map(p=>field(k,p)).join("")}${flags.map(p=>field(k,p)).join("")}</div>`:""}
       <button class="run" data-a="${k}">Run</button></div>`;
   }
@@ -110,7 +251,7 @@ function collect(a){
 async function run(a){
   const r=await api("/api/run",{action:a,values:collect(a)});
   if(r.error){setStatus(r.error,"err");$("#out").textContent="Could not run: "+r.error;return}
-  job=r.job; $("#out").textContent="";
+  job=r.job; curAction=a; $("#out").textContent="";
   document.querySelectorAll(".run").forEach(b=>b.disabled=true);
   $("#stop").style.display="";
   clearInterval(timer); timer=setInterval(poll,700); poll();
@@ -119,12 +260,13 @@ async function poll(){
   if(!job) return;
   const r=await api("/api/job/"+job);
   const o=$("#out"), atEnd=o.scrollTop+o.clientHeight>=o.scrollHeight-30;
-  o.textContent=r.out||"Working…";
+  o.textContent=r.out||"Working…"; lastOut=r.out||"";
   if(atEnd) o.scrollTop=o.scrollHeight;
   if(r.done){
     clearInterval(timer);job=null;$("#stop").style.display="none";
     document.querySelectorAll(".run").forEach(b=>b.disabled=false);
-    setStatus(r.code===0?"Done":"Finished with errors (exit "+r.code+")",r.code===0?"":"err");
+    setStatus(r.code===0?"Done":(r.code===1&&/^scan_(daily|orb)$/.test(curAction||"")?"Done, no matches":"Finished with errors (exit "+r.code+")"),(r.code===0||r.code===1)?"":"err");
+    if(r.code===0&&/^scan_(daily|orb)$/.test(curAction||"")){jump("Results");toast("Scan finished: tick the names you want")}
   } else setStatus("Running… "+(r.cmd||""),"run");
 }
 function setStatus(t,c){const s=$("#status");s.textContent=t;s.className="status "+(c||"")}
@@ -150,7 +292,7 @@ async function refreshMode(){
   const r=await api("/api/config");const m=$("#mode");
   const paper=r.config.paper!==false;m.textContent=paper?"PAPER":"LIVE";m.className="badge "+(paper?"paper":"live");
 }
-(async()=>{SPEC=await api("/api/spec");$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode()})();
+(async()=>{SPEC=await api("/api/spec");$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
 </script>
 </body>
 </html>
