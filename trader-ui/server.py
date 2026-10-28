@@ -42,10 +42,12 @@ ACTIONS = {
         T("limit", "Scan first N symbols", "--limit", "number", ph="300"),
         T("show", "Hits to show", "--show", "number", ph="20")]),
  "news": dict(group="Find", title="News monitor", desc="Headlines and SEC 8-Ks for your tickers, plus how far each moved today.",
+     hint="News checks one ticker at a time (headlines, then SEC filings unless you tick 'Headlines only') and prints everything at the end. Roughly 1 to 3 seconds per ticker, so 10 tickers take 15 to 30 seconds and 100 tickers several minutes. Use Stop if it takes too long.",
      script="trader-news/news.py", sub=[], params=[
         T("tickers", "Tickers", "--tickers", ph="TSLA NVDA", multi=True),
         T("hours", "Look back (hours)", "--hours", "number", ph="12"),
-        T("no_sec", "Headlines only (skip SEC)", "--no-sec", "flag")]),
+        T("no_sec", "Headlines only (skip SEC)", "--no-sec", "flag"),
+        T("all", "Include items already shown before", "--all", "flag")]),
  "entry_check": dict(group="Plan", title="Entry timer", desc="Is the setup waiting, triggered or expired right now?",
      script="trader-entry/entry.py", sub=["check"], params=[SYM,
         T("setup", "Setup", "--setup", "select", options=["orb", "level"]),
@@ -145,6 +147,18 @@ def build_cmd(action, values):
 JOBS = {}
 LOCK = threading.Lock()
 
+MAX_SECONDS = 600
+
+def watchdog(job):
+    for _ in range(MAX_SECONDS):
+        if job["done"]: return
+        time.sleep(1)
+    p = job.get("proc")
+    if p and not job["done"]:
+        job["out"] += "\n[ui] stopped after %d seconds: the tool was taking too long. Try fewer tickers or tick 'Headlines only'.\n" % MAX_SECONDS
+        try: p.kill()
+        except Exception: pass
+
 def run_job(job, cmd, cwd):
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", NO_COLOR="1")
     try:
@@ -208,7 +222,8 @@ class H(BaseHTTPRequestHandler):
         if path.startswith("/api/job/"):
             j = JOBS.get(path.rsplit("/", 1)[1])
             if not j: return self._json(404, {"error": "no such job"})
-            return self._json(200, dict(out=j["out"], done=j["done"], code=j["code"], cmd=j["label"]))
+            el = int((j.get("ended") or time.time()) - j["started"])
+            return self._json(200, dict(out=j["out"], done=j["done"], code=j["code"], cmd=j["label"], elapsed=el))
         self._json(404, {"error": "not found"})
     def do_POST(self):
         if not self._local(): return self._json(403, {"error": "local only"})
@@ -228,6 +243,7 @@ class H(BaseHTTPRequestHandler):
             job = dict(out="", done=False, code=None, label=label, started=time.time())
             with LOCK: JOBS[jid] = job
             threading.Thread(target=run_job, args=(job, cmd, str(self.workdir)), daemon=True).start()
+            threading.Thread(target=watchdog, args=(job,), daemon=True).start()
             return self._json(200, dict(job=jid))
         if path == "/api/cancel":
             j = JOBS.get(data.get("job"))

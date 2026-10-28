@@ -43,7 +43,7 @@ input:focus,select:focus{outline:2px solid var(--accent2);outline-offset:-1px}
 .outhead{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .outhead b{font-size:14px}
 .status{font-size:12px;color:var(--mute)}
-.status.run{color:var(--accent)}.status.err{color:#c4320a}
+.status.busy{color:var(--accent)}.status.err{color:#c4320a}
 .steps{counter-reset:s;margin:0 0 14px;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--mute)}
 .steps li{padding:3px 9px;border:1px solid var(--line);border-radius:99px;background:var(--card)}
 .guide .step{display:grid;grid-template-columns:118px 1fr auto;gap:12px;align-items:center;padding:11px 14px;border:1px solid var(--line);background:var(--card);border-radius:12px;margin-bottom:8px}
@@ -203,7 +203,10 @@ async function renderResults(){
   draw();
 }
 function rawBlock(){return lastOut?`<details class="raw"><summary>Raw scan log</summary><pre>${esc(lastOut)}</pre></details>`:""}
-function sendTo(card,field,grp,tickers){jump(grp,card);const el=document.getElementById(card+"__"+field);if(el)el.value=tickers.join(" ");toast(tickers.length+" ticker"+(tickers.length>1?"s":"")+" filled in: now click Run")}
+function sendTo(card,field,grp,tickers){jump(grp,card);const el=document.getElementById(card+"__"+field);if(el)el.value=tickers.join(" ");
+  let msg=tickers.length+" ticker"+(tickers.length>1?"s":"")+" filled in: now click Run";
+  if(card==="news"&&tickers.length>12){const c=document.getElementById("news__no_sec");if(c)c.checked=true;msg=tickers.length+" tickers is a lot, so 'Headlines only' was ticked to keep it fast. Untick it for SEC filings."}
+  toast(msg)}
 function draw(keepScroll){
   const mode=WL.mode==="orb"?"orb":"daily", rows=shown(), cols=COLS[mode];
   $("#tb").innerHTML=rows.map(h=>`<tr class="${SEL.has(h.symbol)?"sel":""}"><td><input type="checkbox" class="rc" data-s="${esc(h.symbol)}" ${SEL.has(h.symbol)?"checked":""}></td>${cols.map(c=>`<td class="${c[2]?"num":""}">${cellHtml(h,c[0])}</td>`).join("")}<td><button class="go2" data-s="${esc(h.symbol)}" data-c="news" data-f="tickers" data-g="Find">News</button><button class="go2" data-s="${esc(h.symbol)}" data-c="entry_check" data-f="symbol" data-g="Plan">Entry</button></td></tr>`).join("")||`<tr><td colspan="${cols.length+2}" style="padding:18px;color:var(--mute)">No rows match the filter.</td></tr>`;
@@ -265,12 +268,15 @@ async function poll(){
   if(r.done){
     clearInterval(timer);job=null;$("#stop").style.display="none";
     document.querySelectorAll(".run").forEach(b=>b.disabled=false);
-    setStatus(r.code===0?"Done":(r.code===1&&/^scan_(daily|orb)$/.test(curAction||"")?"Done, no matches":"Finished with errors (exit "+r.code+")"),(r.code===0||r.code===1)?"":"err");
+    setStatus(r.code===0?"Done":(r.code===1&&/^(scan_(daily|orb)|news)$/.test(curAction||"")?"Done, nothing to show":"Finished with errors (exit "+r.code+")"),(r.code===0||(r.code===1&&/^(scan_(daily|orb)|news)$/.test(curAction||"")))?"":"err");
     if(r.code===0&&/^scan_(daily|orb)$/.test(curAction||"")){jump("Results");toast("Scan finished: tick the names you want")}
-  } else setStatus("Running… "+(r.cmd||""),"run");
+  } else {
+    setStatus("Running… "+r.elapsed+"s","busy");
+    if(!r.out){const hint=(SPEC.actions[curAction]||{}).hint||"";o.textContent="Working… "+r.elapsed+"s elapsed\n\n"+(hint?hint+"\n\n":"")+"Command: "+(r.cmd||"")}
+  }
 }
 function setStatus(t,c){const s=$("#status");s.textContent=t;s.className="status "+(c||"")}
-$("#stop").onclick=async()=>{if(job){await api("/api/cancel",{job});setStatus("Stopping…","run")}};
+$("#stop").onclick=async()=>{if(job){await api("/api/cancel",{job});setStatus("Stopping…","busy")}};
 $("#copy").onclick=()=>navigator.clipboard.writeText($("#out").textContent);
 
 const LABELS={sec_user_agent:["SEC identity (name and email)","text"],budget:["Budget $","number"],max_loss_per_trade_usd:["Max loss per trade $","number"],max_daily_loss_usd:["Max loss per day $","number"],max_trades_per_day:["Max trades per day","number"],min_reward_risk:["Min reward : risk","number"],no_entries_after:["No entries after (ET)","text"],flat_by:["Flat by (ET)","text"],paper:["Paper trading","flag"]};
