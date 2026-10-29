@@ -86,6 +86,7 @@ table.rgrid{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5p
 .go2{padding:2px 9px;font-size:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;cursor:pointer;margin-right:4px}
 .go2:hover{border-color:var(--accent);color:var(--accent)}
 details.raw{margin-top:12px;color:var(--mute);font-size:13px}
+pre.rawout{background:var(--out);color:var(--outink);padding:10px;border-radius:10px;overflow:auto;max-height:520px;white-space:pre-wrap;font:12px/1.4 Consolas,Menlo,monospace}
 details.raw pre{background:var(--out);color:var(--outink);padding:10px;border-radius:10px;overflow:auto;max-height:260px;font:12px/1.4 Consolas,Menlo,monospace}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:99px;font-size:13px;z-index:20}
 .out.brief{background:var(--card);color:var(--ink);border:1px solid var(--line);font:14px/1.45 system-ui,Segoe UI,sans-serif;white-space:normal}
@@ -141,7 +142,7 @@ tr.clk{cursor:pointer}
 <script>
 const $=s=>document.querySelector(s);
 let SPEC=null, group="Guide", job=null, timer=null, curAction=null, curVals={}, lastOut="";
-const GROUPS=["Guide","Find","Results","Saved news","Plan","Size & check","Monitor","Research","Settings"];
+const GROUPS=["Guide","Find","Results","Saved news","Run history","Plan","Size & check","Monitor","Research","Settings"];
 const FLOW=["1 Find","2 News","3 Entry","4 Exit plan","5 Time Machine","6 Size","7 Risk","8 Order in Claude"];
 
 async function api(p,body){const r=await fetch(p,body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:undefined);return r.json()}
@@ -155,7 +156,7 @@ const GUIDE=[
  {t:"9:30 to 10:15 AM",sub:"wait",w:[570,615],title:"Do nothing: the opening range is forming",how:"The first 15 minutes set the range. Do not enter yet.",go:null},
  {t:"10:15 AM",sub:"scan",w:[615,630],title:"Scan for breakouts",how:"Find, then Opening-range breakouts, then Run. You land on Results: tick one to three names, then click Send to News.",go:["Find","scan_orb","Go to card"]},
  {t:"10:15 to 10:30 AM",sub:"check news",w:[615,630],title:"Check the news on each pick",how:"Find, then News monitor, type the ticker, Run. Skip the stock if you see a RED FLAG (earnings, a deal, an 8-K or a halt). Every run is saved under Saved news.",go:["Find","news","Go to card"]},
- {t:"10:15 AM onward",sub:"entry",w:[615,810],title:"Ask the Entry timer",how:"Plan, then Entry timer, type the ticker, keep Save result ticked, Run. You need the word triggered. If it says waiting, run it again in a few minutes. If expired, skip it.",go:["Plan","entry_check","Go to card"]},
+ {t:"10:15 AM onward",sub:"entry",w:[615,810],title:"Ask the Entry timer",how:"Easiest: on Results tick your names and click Check entry for ticked. Or Plan, then Entry timer (ONE ticker), keep Save result ticked, Run. You need TRIGGERED. If WAITING, run it again in a few minutes. If EXPIRED, skip it.",go:["Plan","entry_check","Go to card"]},
  {t:"When triggered",sub:"plan the exit",w:[615,810],title:"Set the stop and target",how:"Plan, then Exit planner. Leave the boxes empty and click Run. It reads your saved entry.",go:["Plan","exit_plan","Go to card"]},
  {t:"Then",sub:"odds",w:[615,810],title:"Run the Time Machine",how:"Plan, then Time Machine, Run. Read the odds. If it is close to a coin flip, skipping is a fine choice.",go:["Plan","tm_run","Go to card"]},
  {t:"Then",sub:"size",w:[615,810],title:"Size the position",how:"Size & check, then Budget, Run. It gives shares so your loss at the stop stays within your limit.",go:["Size & check","size","Go to card"]},
@@ -223,7 +224,7 @@ async function renderResults(){
   <div class="toolbar"><input type="text" id="q" placeholder="Search ticker"> ${chips.map(k=>`<button class="mini chipf" data-k="${k}">${LAB[k]}</button>`).join("")}${chips.length?'<span class="sep"></span>':""}
    <button class="mini" id="top10">Select top 10 shown</button><button class="mini" id="selall">Select all shown</button><button class="mini" id="clr">Clear</button><span class="sep"></span>
    <span id="cnt" class="status"></span></div>
-  <div class="toolbar"><button class="mini act" id="toNews">Send to News</button><button class="mini act" id="shortlist">Save shortlist</button><button class="mini act" id="copyAll">Copy all shown</button><button class="mini" id="copyT">Copy ticked</button><label class="chk" style="margin:0 0 0 4px">Separator <select id="sep" style="width:auto;padding:5px 8px"><option value=" ">space</option><option value=",">comma</option><option value="\n">new line</option></select></label><span class="status">Sort by clicking a column heading.</span></div>
+  <div class="toolbar"><button class="mini act" id="toNews">Send to News</button><button class="mini act" id="toEntry">Check entry for ticked</button><button class="mini act" id="shortlist">Save shortlist</button><button class="mini act" id="copyAll">Copy all shown</button><button class="mini" id="copyT">Copy ticked</button><label class="chk" style="margin:0 0 0 4px">Separator <select id="sep" style="width:auto;padding:5px 8px"><option value=" ">space</option><option value=",">comma</option><option value="\n">new line</option></select></label><span class="status">Sort by clicking a column heading.</span></div>
   <div class="tbl-wrap"><table class="rgrid"><thead><tr><th class="nosort"><input type="checkbox" id="hdrchk" title="Select all shown"></th>${COLS[mode].map(c=>`<th class="${c[2]?"num":""}" data-k="${c[0]}">${c[1]}<span class="arr"></span></th>`).join("")}<th class="nosort">Next step</th></tr></thead><tbody id="tb"></tbody></table></div>${rawBlock()}`;
   $("#q").oninput=e=>{qText=e.target.value.trim().toUpperCase();draw()};
   document.querySelectorAll(".chipf").forEach(b=>b.onclick=()=>{const k=b.dataset.k;setupF.has(k)?setupF.delete(k):setupF.add(k);b.classList.toggle("on");draw()});
@@ -232,6 +233,7 @@ async function renderResults(){
   $("#selall").onclick=()=>{shown().forEach(h=>SEL.add(h.symbol));saveSel();draw()};
   $("#clr").onclick=()=>{SEL.clear();saveSel();draw()};
   $("#hdrchk").onchange=e=>{shown().forEach(h=>e.target.checked?SEL.add(h.symbol):SEL.delete(h.symbol));saveSel();draw()};
+  $("#toEntry").onclick=()=>{if(!SEL.size)return toast("Tick at least one ticker first");if(SEL.size>60)return toast("Tick 60 or fewer");sendTo("entry_many","tickers","Plan",[...SEL]);run("entry_many")};
   $("#toNews").onclick=()=>{if(!SEL.size)return toast("Tick at least one ticker first");sendTo("news","tickers","Find",[...SEL])};
   try{const sv=localStorage.getItem("sep");if(sv!==null)$("#sep").value=sv}catch(e){}
   $("#sep").onchange=e=>{try{localStorage.setItem("sep",e.target.value)}catch(x){}};
@@ -322,6 +324,20 @@ function showBrief(d,raw){
      .then(r=>{if(r&&r.ok)toast("Saved. Find it under Saved news")}).catch(()=>{});
   }
 }
+const ELAB={triggered:["TRIGGERED","green"],waiting:["WAITING","amber"],expired:["EXPIRED","grey"],error:["ERROR","red"]};
+function showEntry(d,raw,tgt){
+  const o=tgt||$("#out");
+  const rows=(d||[]).map(x=>{const res=x.result||{};const st=x.error?"error":(res.status||"error");return{t:x.symbol,st,res,err:x.error}});
+  const ord={triggered:0,waiting:1,expired:2,error:3};rows.sort((a,b)=>(ord[a.st]??9)-(ord[b.st]??9));
+  const trig=rows.filter(x=>x.st==="triggered").map(x=>x.t);
+  let h=`<div class="tools"><button class="mini" id="ecopy">Copy triggered tickers</button><button class="mini braw">Show raw data</button></div>
+  <details class="legend" open><summary><b>What the statuses mean</b></summary><div class="lg"><div><span class="verdict green">TRIGGERED</span> A 5-minute bar has closed above the opening-range high. The entry signal has fired. Next: click Use this, then Exit planner.</div><div><span class="verdict amber">WAITING</span> No close above the range yet, or the range is still forming. Check again in a few minutes.</div><div><span class="verdict grey">EXPIRED</span> The entry window ended without a trigger (after 3:30 PM or the market is closed). Skip it.</div><div><span class="verdict red">ERROR</span> No chart data came back for that ticker.</div></div></details>
+  <h4>${trig.length} of ${rows.length} triggered</h4><table class="sum"><tr><th>Ticker</th><th>Status</th><th>Trigger time</th><th>Price</th><th>Over range</th><th>Level</th><th>Last close</th><th>Why</th><th></th></tr>`+rows.map(x=>{const L=ELAB[x.st]||ELAB.error,t=x.res.trigger||{},l=x.res.last||{};return`<tr><td><b>${esc(x.t)}</b></td><td><span class="verdict ${L[1]}">${L[0]}</span></td><td>${esc(t.time||"")}</td><td>${t.price!=null?money(t.price):""}</td><td>${t.pct_over!=null?"+"+t.pct_over+"%":""}</td><td>${x.res.level!=null?money(x.res.level):""}</td><td>${l.close!=null?money(l.close)+(l.vs_level_pct!=null?" ("+(l.vs_level_pct>0?"+":"")+l.vs_level_pct+"%)":""):""}</td><td class="why" style="white-space:normal">${esc(x.err||x.res.reason||"")}</td><td>${x.st==="triggered"?`<button class="go2 use" data-s="${esc(x.t)}">Use this</button>`:""}</td></tr>`}).join("")+`</table><div class="fine">Free Yahoo bars, unofficial and can lag a minute or two. Nothing was placed.</div>`;
+  o.innerHTML=h;o.classList.add("brief");o.scrollTop=0;
+  o.querySelector("#ecopy").onclick=async()=>{if(!trig.length)return toast("Nothing triggered yet");try{await navigator.clipboard.writeText(trig.join(" "));toast("Copied "+trig.length+" triggered ticker"+(trig.length>1?"s":""))}catch(e){toast("Copy blocked by the browser")}};
+  o.querySelector(".braw").onclick=()=>{o.classList.remove("brief");o.textContent=raw};
+  o.querySelectorAll(".use").forEach(b=>b.onclick=()=>{jump("Plan","entry_check");const el=document.getElementById("entry_check__symbol");if(el)el.value=b.dataset.s;run("entry_check")});
+}
 const VORD={red:0,amber:1,green:2,grey:3};
 async function renderSaved(){
   const m=$("#main");m.innerHTML='<div class="banner">Loading saved news…</div>';
@@ -337,8 +353,32 @@ async function renderSaved(){
     const b=buildBrief(run.data,run.tickers||[]);box.innerHTML=`<p class="meta">Saved ${esc(etTime(run.saved_at))} ET · ${esc((run.tickers||[]).length)} tickers</p>`+b.h;wireBrief(box,box.innerHTML,b.rows,JSON.stringify(run.data,null,2));box.scrollIntoView({behavior:"smooth",block:"start"})}
   m.querySelectorAll("tr.clk").forEach(tr=>tr.onclick=()=>open(tr.dataset.id));
 }
+async function renderRuns(){
+  const m=$("#main");m.innerHTML='<div class="banner">Loading runs…</div>';
+  const list=await api("/api/runs");
+  if(!Array.isArray(list)||!list.length){m.innerHTML='<div class="card"><h3>No runs yet</h3><p>Every tool you run is saved here automatically, each as its own result, so you can reopen it later.</p></div>';return}
+  const acts=[...new Set(list.map(x=>x.title))].sort();
+  m.innerHTML=`<div class="card"><h3>Run history</h3><p>Every run is saved separately, newest first (last 300 kept in <code>trader\\ui-runs</code>). Click a row to open its result.</p>
+  <div class="row"><select id="rfilter"><option value="">All tools</option>${acts.map(a=>`<option>${esc(a)}</option>`).join("")}</select></div>
+  <div class="tbl-wrap" style="max-height:300px"><table class="rgrid"><thead><tr><th class="nosort">Time (ET)</th><th class="nosort">Tool</th><th class="nosort">Inputs</th><th class="nosort">Result</th><th class="nosort num">Seconds</th></tr></thead><tbody id="rbody"></tbody></table></div></div>
+  <div class="savedbrief brief" id="runview"><p style="color:var(--mute)">Click a row above to open that run.</p></div>`;
+  const okc=x=>x.code===0||(x.code===1&&/^(scan_(daily|orb)|news|entry_many)$/.test(x.action));
+  function draw(){const f=$("#rfilter").value;
+    $("#rbody").innerHTML=list.filter(x=>!f||x.title===f).map(x=>`<tr class="clk" data-id="${esc(x.id)}"><td>${esc(etTime(new Date(x.started*1000).toISOString()))}</td><td><b>${esc(x.title)}</b></td><td style="white-space:normal;color:var(--mute)">${esc((x.args||"").slice(0,80))}</td><td><span class="verdict ${okc(x)?"green":"red"}">${okc(x)?"OK":"ERROR"}</span></td><td class="num">${x.seconds}</td></tr>`).join("");
+    $("#rbody").querySelectorAll("tr.clk").forEach(tr=>tr.onclick=()=>open(tr.dataset.id))}
+  async function open(id){const run=await api("/api/runs/"+id);const box=$("#runview");
+    if(!run||run.error){box.textContent="Could not open that run.";return}
+    box.classList.add("brief");
+    const meta=`<p class="meta">${esc(run.title)} · ${esc(etTime(new Date(run.started*1000).toISOString()))} ET · ${run.seconds}s · exit ${run.code}</p>`;
+    try{
+      if(run.action==="news"){const d=JSON.parse(run.out);const b=buildBrief(d,[]);box.innerHTML=meta+b.h;wireBrief(box,box.innerHTML,b.rows,run.out);box.scrollIntoView({behavior:"smooth"});return}
+      if(run.action==="entry_many"){const d=JSON.parse(run.out);showEntry(d,run.out,box);box.insertAdjacentHTML("afterbegin",meta);box.scrollIntoView({behavior:"smooth"});return}
+    }catch(e){}
+    box.classList.remove("brief");box.innerHTML=meta+'<pre class="rawout"></pre>';box.querySelector("pre").textContent=run.out;box.scrollIntoView({behavior:"smooth"})}
+  $("#rfilter").onchange=draw;draw();
+}
 function nav(){
-  document.querySelector(".wrap").classList.toggle("wide",group==="Results"||group==="Saved news");
+  document.querySelector(".wrap").classList.toggle("wide",group==="Results"||group==="Saved news"||group==="Run history");
   $("#nav").innerHTML=GROUPS.map(g=>`<button class="${g===group?'on':''}" data-g="${g}">${g}</button>`).join("");
   document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{group=b.dataset.g;nav();render()});
 }
@@ -354,6 +394,7 @@ function render(){
   if(group==="Guide") return renderGuide();
   if(group==="Results") return renderResults();
   if(group==="Saved news") return renderSaved();
+  if(group==="Run history") return renderRuns();
   if(group==="Settings") return renderSettings();
   let html="";
   if(group==="Find"||group==="Plan") html+=`<ul class="steps">${FLOW.map(s=>`<li>${s}</li>`).join("")}</ul>`;
@@ -393,8 +434,9 @@ async function poll(){
   if(r.done){
     clearInterval(timer);job=null;$("#stop").style.display="none";
     document.querySelectorAll(".run").forEach(b=>b.disabled=false);
-    setStatus(r.code===0?"Done":(r.code===1&&/^(scan_(daily|orb)|news)$/.test(curAction||"")?"Done, nothing to show":"Finished with errors (exit "+r.code+")"),(r.code===0||(r.code===1&&/^(scan_(daily|orb)|news)$/.test(curAction||"")))?"":"err");
+    setStatus(r.code===0?"Done":(r.code===1&&/^(scan_(daily|orb)|news|entry_many)$/.test(curAction||"")?"Done, nothing to show":"Finished with errors (exit "+r.code+")"),(r.code===0||(r.code===1&&/^(scan_(daily|orb)|news|entry_many)$/.test(curAction||"")))?"":"err");
     if(curAction==="news"){try{const d=JSON.parse(r.out);showBrief(d,r.out);return}catch(e){}}
+    if(curAction==="entry_many"){try{const d=JSON.parse(r.out);showEntry(d,r.out);return}catch(e){}}
     if(r.code===0&&/^scan_(daily|orb)$/.test(curAction||"")){jump("Results");toast("Scan finished: tick the names you want")}
   } else {
     setStatus("Running… "+r.elapsed+"s","busy");
@@ -424,7 +466,7 @@ async function refreshMode(){
   const r=await api("/api/config");const m=$("#mode");
   const paper=r.config.paper!==false;m.textContent=paper?"PAPER":"LIVE";m.className="badge "+(paper?"paper":"live");
 }
-(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-29.2"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
+(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-29.4"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
 </script>
 </body>
 </html>

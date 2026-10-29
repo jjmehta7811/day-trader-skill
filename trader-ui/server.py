@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-VERSION = "2026-10-29.2"
+VERSION = "2026-10-29.4"
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 def T(name, label, flag=None, kind="text", ph="", options=None, positional=False, multi=False, required=False, default=""):
@@ -50,12 +50,21 @@ ACTIONS = {
         T("no_sec", "Headlines only (skip SEC)", "--no-sec", "flag"),
         T("all", "Include items already shown before", "--all", "flag"),
         T("json", "", "--json", "hidden")]),
- "entry_check": dict(group="Plan", title="Entry timer", desc="Is the setup waiting, triggered or expired right now?",
+ "entry_check": dict(group="Plan", title="Entry timer", desc="One ticker. Is the setup waiting, triggered or expired right now? For a list, use the next card.",
      script="trader-entry/entry.py", sub=["check"], params=[SYM,
         T("setup", "Setup", "--setup", "select", options=["orb", "level"]),
         T("level", "Level (for 'level')", "--level", "number", ph="364.00"),
         T("or_minutes", "Opening range minutes", "--or-minutes", "number", ph="15"),
         T("interval", "Bars", "--interval", "select", options=["5m", "1m"]), WRITE]),
+ "entry_many": dict(group="Plan", title="Entry timer: many tickers", desc="Checks each ticker one after another and shows waiting, triggered or expired for all of them. Paste tickers separated by spaces or commas (60 at most).",
+     hint="Checks about 1 to 2 seconds per ticker, so 10 tickers take 15 to 20 seconds.",
+     script="trader-entry/entry.py", sub=["watchlist"], params=[
+        T("tickers", "Tickers", "", "listfile", ph="TSLA NVDA AMD", required=True),
+        T("setup", "Setup", "--setup", "select", options=["orb", "level"]),
+        T("level", "Level (for 'level')", "--level", "number", ph="364.00"),
+        T("or_minutes", "Opening range minutes", "--or-minutes", "number", ph="15"),
+        T("interval", "Bars", "--interval", "select", options=["5m", "1m"]),
+        T("json", "", "--json", "hidden")]),
  "exit_plan": dict(group="Plan", title="Exit planner", desc="Stop and target before you enter. With a saved entry, leave the boxes empty to use its defaults.",
      script="trader-exit/exit.py", sub=["plan"], params=[
         T("symbol", "Ticker (optional)", "--symbol", ph="TSLA"),
@@ -108,7 +117,7 @@ ACTIONS = {
 NUM = re.compile(r"^-?\d+(\.\d+)?$")
 SAFE = re.compile(r"^[A-Za-z0-9 ,.:_\-+/%$@^=]*$")
 
-def build_cmd(action, values):
+def build_cmd(action, values, workdir=None):
     spec = ACTIONS.get(action)
     if not spec:
         raise ValueError("unknown action")
@@ -131,6 +140,22 @@ def build_cmd(action, values):
             if p["required"]:
                 raise ValueError(p["label"] + " is required")
             continue
+        if p["kind"] == "listfile":
+            syms = [x for x in re.split(r"[ ,\n]+", v.upper()) if x]
+            if not syms or any(not re.match(r"^[A-Z0-9.\-]{1,10}$", x) for x in syms):
+                raise ValueError(p["label"] + ": use ticker symbols separated by spaces or commas")
+            if len(syms) > 60:
+                raise ValueError("Please check 60 tickers or fewer at a time (you gave %d)" % len(syms))
+            if workdir is None:
+                raise ValueError("no data folder")
+            (workdir / "trader").mkdir(exist_ok=True)
+            (workdir / "trader" / "ui-entry-list.json").write_text(
+                json.dumps({"hits": [{"symbol": x} for x in syms]}), encoding="utf-8")
+            cmd += ["--watchlist", "trader/ui-entry-list.json"]
+            continue
+        if p["name"] == "symbol" and not p["multi"] and re.search(r"[\s,]", v):
+            raise ValueError("%s takes one ticker at a time. For a list, use the card 'Entry timer: many tickers', "
+                             "or tick names on Results and click 'Check entry for ticked'." % spec["title"])
         if not SAFE.match(v):
             raise ValueError(p["label"] + " has characters that are not allowed")
         if p["kind"] == "number" and not NUM.match(v):
@@ -178,6 +203,24 @@ def run_job(job, cmd, cwd):
         job["code"] = -1
     job["done"] = True
     job["ended"] = time.time()
+    try: save_run(job, Path(cwd))
+    except Exception: pass
+
+def save_run(job, cwd):
+    if not job.get("action"): return
+    rd = cwd / "trader" / "ui-runs"
+    rd.mkdir(parents=True, exist_ok=True)
+    base = "run-" + time.strftime("%Y%m%d-%H%M%S", time.localtime(job["started"]))
+    rid, n = base, 1
+    while (rd / (rid + ".json")).exists():
+        n += 1; rid = "%s-%d" % (base, n)
+    rec = dict(id=rid, action=job["action"], title=job.get("title", job["action"]), args=job.get("args", ""),
+               code=job["code"], started=job["started"], seconds=round(job["ended"] - job["started"], 1),
+               out=job["out"][-400000:])
+    (rd / (rid + ".json")).write_text(json.dumps(rec), encoding="utf-8")
+    for old in sorted(rd.glob("run-*.json"))[:-300]:
+        try: old.unlink()
+        except Exception: pass
 
 CONFIG_KEYS = ["sec_user_agent", "budget", "max_loss_per_trade_usd", "max_daily_loss_usd",
                "max_trades_per_day", "min_reward_risk", "no_entries_after", "flat_by", "paper"]
@@ -218,6 +261,21 @@ class H(BaseHTTPRequestHandler):
             cfg = self.read_cfg()
             return self._json(200, dict(keys=CONFIG_KEYS, config={k: cfg.get(k) for k in CONFIG_KEYS},
                                         exists=self.cfg_path().exists()))
+        if path == "/api/runs" or path.startswith("/api/runs/"):
+            rd = self.workdir / "trader" / "ui-runs"
+            if path == "/api/runs":
+                out = []
+                for f in sorted(rd.glob("run-*.json"), reverse=True)[:300] if rd.exists() else []:
+                    try:
+                        d = json.loads(f.read_text(encoding="utf-8")); d.pop("out", None); out.append(d)
+                    except Exception:
+                        pass
+                return self._json(200, out)
+            rid = path.rsplit("/", 1)[1]
+            f = rd / (rid + ".json")
+            if not re.match(r"^run-\d{8}-\d{6}(-\d+)?$", rid) or not f.exists():
+                return self._json(404, {"error": "not found"})
+            return self._json(200, json.loads(f.read_text(encoding="utf-8")))
         if path == "/api/history" or path.startswith("/api/history/"):
             hd = self.workdir / "trader" / "ui-history"
             if path == "/api/history":
@@ -255,13 +313,15 @@ class H(BaseHTTPRequestHandler):
         path = self.path
         if path == "/api/run":
             try:
-                cmd = build_cmd(data.get("action"), data.get("values") or {})
+                cmd = build_cmd(data.get("action"), data.get("values") or {}, self.workdir)
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
             (self.workdir / "trader").mkdir(exist_ok=True)
             jid = uuid.uuid4().hex[:10]
             label = " ".join(Path(cmd[2]).name if i == 2 else c for i, c in enumerate(cmd) if i != 1)
-            job = dict(out="", done=False, code=None, label=label, started=time.time())
+            act = data.get("action")
+            job = dict(out="", done=False, code=None, label=label, started=time.time(), action=act,
+                       title=ACTIONS[act]["title"], args=" ".join(cmd[3:])[:300])
             with LOCK: JOBS[jid] = job
             threading.Thread(target=run_job, args=(job, cmd, str(self.workdir)), daemon=True).start()
             threading.Thread(target=watchdog, args=(job,), daemon=True).start()
