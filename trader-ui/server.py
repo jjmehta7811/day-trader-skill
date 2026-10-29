@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-VERSION = "2026-10-29.4"
+VERSION = "2026-10-29.6"
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 def T(name, label, flag=None, kind="text", ph="", options=None, positional=False, multi=False, required=False, default=""):
@@ -56,8 +56,8 @@ ACTIONS = {
         T("level", "Level (for 'level')", "--level", "number", ph="364.00"),
         T("or_minutes", "Opening range minutes", "--or-minutes", "number", ph="15"),
         T("interval", "Bars", "--interval", "select", options=["5m", "1m"]), WRITE]),
- "entry_many": dict(group="Plan", title="Entry timer: many tickers", desc="Checks each ticker one after another and shows waiting, triggered or expired for all of them. Paste tickers separated by spaces or commas (60 at most).",
-     hint="Checks about 1 to 2 seconds per ticker, so 10 tickers take 15 to 20 seconds.",
+ "entry_many": dict(group="Plan", title="Entry timer: many tickers", desc="Checks each ticker one after another and shows waiting, triggered or expired for all of them. Paste tickers separated by spaces or commas (100 at most).",
+     hint="Checks about 1 to 2 seconds per ticker, so 100 tickers take about 2 to 3 minutes.",
      script="trader-entry/entry.py", sub=["watchlist"], params=[
         T("tickers", "Tickers", "", "listfile", ph="TSLA NVDA AMD", required=True),
         T("setup", "Setup", "--setup", "select", options=["orb", "level"]),
@@ -144,8 +144,8 @@ def build_cmd(action, values, workdir=None):
             syms = [x for x in re.split(r"[ ,\n]+", v.upper()) if x]
             if not syms or any(not re.match(r"^[A-Z0-9.\-]{1,10}$", x) for x in syms):
                 raise ValueError(p["label"] + ": use ticker symbols separated by spaces or commas")
-            if len(syms) > 60:
-                raise ValueError("Please check 60 tickers or fewer at a time (you gave %d)" % len(syms))
+            if len(syms) > 100:
+                raise ValueError("Please check 100 tickers or fewer at a time (you gave %d)" % len(syms))
             if workdir is None:
                 raise ValueError("no data folder")
             (workdir / "trader").mkdir(exist_ok=True)

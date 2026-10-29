@@ -142,7 +142,7 @@ tr.clk{cursor:pointer}
 <script>
 const $=s=>document.querySelector(s);
 let SPEC=null, group="Guide", job=null, timer=null, curAction=null, curVals={}, lastOut="";
-const GROUPS=["Guide","Find","Results","Saved news","Run history","Plan","Size & check","Monitor","Research","Settings"];
+const GROUPS=["Guide","Find","Results","Saved news","Trade results","Run history","Plan","Size & check","Monitor","Research","Settings"];
 const FLOW=["1 Find","2 News","3 Entry","4 Exit plan","5 Time Machine","6 Size","7 Risk","8 Order in Claude"];
 
 async function api(p,body){const r=await fetch(p,body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:undefined);return r.json()}
@@ -233,7 +233,7 @@ async function renderResults(){
   $("#selall").onclick=()=>{shown().forEach(h=>SEL.add(h.symbol));saveSel();draw()};
   $("#clr").onclick=()=>{SEL.clear();saveSel();draw()};
   $("#hdrchk").onchange=e=>{shown().forEach(h=>e.target.checked?SEL.add(h.symbol):SEL.delete(h.symbol));saveSel();draw()};
-  $("#toEntry").onclick=()=>{if(!SEL.size)return toast("Tick at least one ticker first");if(SEL.size>60)return toast("Tick 60 or fewer");sendTo("entry_many","tickers","Plan",[...SEL]);run("entry_many")};
+  $("#toEntry").onclick=()=>{if(!SEL.size)return toast("Tick at least one ticker first");if(SEL.size>100)return toast("Tick 100 or fewer");sendTo("entry_many","tickers","Plan",[...SEL]);run("entry_many")};
   $("#toNews").onclick=()=>{if(!SEL.size)return toast("Tick at least one ticker first");sendTo("news","tickers","Find",[...SEL])};
   try{const sv=localStorage.getItem("sep");if(sv!==null)$("#sep").value=sv}catch(e){}
   $("#sep").onchange=e=>{try{localStorage.setItem("sep",e.target.value)}catch(x){}};
@@ -353,32 +353,37 @@ async function renderSaved(){
     const b=buildBrief(run.data,run.tickers||[]);box.innerHTML=`<p class="meta">Saved ${esc(etTime(run.saved_at))} ET · ${esc((run.tickers||[]).length)} tickers</p>`+b.h;wireBrief(box,box.innerHTML,b.rows,JSON.stringify(run.data,null,2));box.scrollIntoView({behavior:"smooth",block:"start"})}
   m.querySelectorAll("tr.clk").forEach(tr=>tr.onclick=()=>open(tr.dataset.id));
 }
-async function renderRuns(){
+async function renderRuns(trade){
   const m=$("#main");m.innerHTML='<div class="banner">Loading runs…</div>';
   const list=await api("/api/runs");
   if(!Array.isArray(list)||!list.length){m.innerHTML='<div class="card"><h3>No runs yet</h3><p>Every tool you run is saved here automatically, each as its own result, so you can reopen it later.</p></div>';return}
-  const acts=[...new Set(list.map(x=>x.title))].sort();
-  m.innerHTML=`<div class="card"><h3>Run history</h3><p>Every run is saved separately, newest first (last 300 kept in <code>trader\\ui-runs</code>). Click a row to open its result.</p>
-  <div class="row"><select id="rfilter"><option value="">All tools</option>${acts.map(a=>`<option>${esc(a)}</option>`).join("")}</select></div>
+  const TT=["Entry timer: many tickers","Entry timer","Exit planner","Show current plan","Time Machine","Fan chart"];
+  const acts=trade?TT:[...new Set(list.map(x=>x.title))].sort();
+  var TS=window.TS||TT[0];
+  m.innerHTML=`<div class="card"><h3>${trade?"Trade results":"Run history"}</h3>${trade?`<div class="row" id="ttabs">${TT.map(t=>`<button class="mini ${t===TS?"act":""}" data-t="${esc(t)}">${esc(t)}</button>`).join("")}</div><p>Latest result of the selected tool opens below. Older runs are listed here.</p>`:""}<p>Every run is saved separately, newest first (last 300 kept in <code>trader\\ui-runs</code>). Click a row to open its result.</p>
+  ${trade?"":`<div class="row"><select id="rfilter"><option value="">All tools</option>${acts.map(a=>`<option>${esc(a)}</option>`).join("")}</select></div>`}
   <div class="tbl-wrap" style="max-height:300px"><table class="rgrid"><thead><tr><th class="nosort">Time (ET)</th><th class="nosort">Tool</th><th class="nosort">Inputs</th><th class="nosort">Result</th><th class="nosort num">Seconds</th></tr></thead><tbody id="rbody"></tbody></table></div></div>
   <div class="savedbrief brief" id="runview"><p style="color:var(--mute)">Click a row above to open that run.</p></div>`;
   const okc=x=>x.code===0||(x.code===1&&/^(scan_(daily|orb)|news|entry_many)$/.test(x.action));
-  function draw(){const f=$("#rfilter").value;
+  function draw(){const f=trade?TS:$("#rfilter").value;
     $("#rbody").innerHTML=list.filter(x=>!f||x.title===f).map(x=>`<tr class="clk" data-id="${esc(x.id)}"><td>${esc(etTime(new Date(x.started*1000).toISOString()))}</td><td><b>${esc(x.title)}</b></td><td style="white-space:normal;color:var(--mute)">${esc((x.args||"").slice(0,80))}</td><td><span class="verdict ${okc(x)?"green":"red"}">${okc(x)?"OK":"ERROR"}</span></td><td class="num">${x.seconds}</td></tr>`).join("");
     $("#rbody").querySelectorAll("tr.clk").forEach(tr=>tr.onclick=()=>open(tr.dataset.id))}
-  async function open(id){const run=await api("/api/runs/"+id);const box=$("#runview");
+  async function open(id,quiet){const run=await api("/api/runs/"+id);const box=$("#runview");
     if(!run||run.error){box.textContent="Could not open that run.";return}
     box.classList.add("brief");
     const meta=`<p class="meta">${esc(run.title)} · ${esc(etTime(new Date(run.started*1000).toISOString()))} ET · ${run.seconds}s · exit ${run.code}</p>`;
     try{
-      if(run.action==="news"){const d=JSON.parse(run.out);const b=buildBrief(d,[]);box.innerHTML=meta+b.h;wireBrief(box,box.innerHTML,b.rows,run.out);box.scrollIntoView({behavior:"smooth"});return}
-      if(run.action==="entry_many"){const d=JSON.parse(run.out);showEntry(d,run.out,box);box.insertAdjacentHTML("afterbegin",meta);box.scrollIntoView({behavior:"smooth"});return}
+      if(run.action==="news"){const d=JSON.parse(run.out);const b=buildBrief(d,[]);box.innerHTML=meta+b.h;wireBrief(box,box.innerHTML,b.rows,run.out);(quiet||box.scrollIntoView({behavior:"smooth"}));return}
+      if(run.action==="entry_many"){const d=JSON.parse(run.out);showEntry(d,run.out,box);box.insertAdjacentHTML("afterbegin",meta);(quiet||box.scrollIntoView({behavior:"smooth"}));return}
     }catch(e){}
-    box.classList.remove("brief");box.innerHTML=meta+'<pre class="rawout"></pre>';box.querySelector("pre").textContent=run.out;box.scrollIntoView({behavior:"smooth"})}
+    box.classList.remove("brief");box.innerHTML=meta+'<pre class="rawout"></pre>';box.querySelector("pre").textContent=run.out;(quiet||box.scrollIntoView({behavior:"smooth"}))}
+  if(trade){m.querySelectorAll("#ttabs button").forEach(b=>b.onclick=()=>{window.TS=b.dataset.t;renderRuns(true)});
+    draw();const first=list.find(x=>x.title===TS);
+    if(first)open(first.id,true);else $("#runview").innerHTML='<p style="color:var(--mute)">No runs of "'+esc(TS)+'" yet. Run it from the Plan page and the result shows here.</p>';return}
   $("#rfilter").onchange=draw;draw();
 }
 function nav(){
-  document.querySelector(".wrap").classList.toggle("wide",group==="Results"||group==="Saved news"||group==="Run history");
+  document.querySelector(".wrap").classList.toggle("wide",group==="Results"||group==="Saved news"||group==="Run history"||group==="Trade results");
   $("#nav").innerHTML=GROUPS.map(g=>`<button class="${g===group?'on':''}" data-g="${g}">${g}</button>`).join("");
   document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{group=b.dataset.g;nav();render()});
 }
@@ -395,6 +400,7 @@ function render(){
   if(group==="Results") return renderResults();
   if(group==="Saved news") return renderSaved();
   if(group==="Run history") return renderRuns();
+  if(group==="Trade results") return renderRuns(true);
   if(group==="Settings") return renderSettings();
   let html="";
   if(group==="Find"||group==="Plan") html+=`<ul class="steps">${FLOW.map(s=>`<li>${s}</li>`).join("")}</ul>`;
@@ -466,7 +472,7 @@ async function refreshMode(){
   const r=await api("/api/config");const m=$("#mode");
   const paper=r.config.paper!==false;m.textContent=paper?"PAPER":"LIVE";m.className="badge "+(paper?"paper":"live");
 }
-(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-29.4"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
+(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-29.6"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
 </script>
 </body>
 </html>
