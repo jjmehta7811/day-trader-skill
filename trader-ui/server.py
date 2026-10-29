@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-VERSION = "2026-10-29.6"
+VERSION = "2026-10-29.7"
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 def T(name, label, flag=None, kind="text", ph="", options=None, positional=False, multi=False, required=False, default=""):
@@ -255,6 +255,15 @@ class H(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path in ("/", "/index.html"):
             return self._send(200, (HERE / "index.html").read_bytes(), "text/html")
+        if path == "/api/names":
+            names = {}
+            try:
+                for line in (self.workdir / "trader" / "universe.txt").read_text(encoding="utf-8", errors="replace").splitlines():
+                    if "|" in line and not line.startswith("#"):
+                        k, v = line.split("|", 1); names[k.strip().upper()] = v.strip()
+            except Exception:
+                pass
+            return self._json(200, names)
         if path == "/api/spec":
             return self._json(200, dict(actions=ACTIONS, workdir=str(self.workdir), version=VERSION))
         if path == "/api/config":

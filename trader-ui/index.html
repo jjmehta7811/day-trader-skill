@@ -120,6 +120,7 @@ tr.clk{cursor:pointer}
 .vc{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:99px;color:#fff;margin-right:4px}
 .vc.red{background:#c4320a}.vc.amber{background:#b54708}.vc.green{background:#0b7a4f}.vc.grey{background:#667085}
 .savedbrief{margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px 16px}
+.co{font-size:11px;color:var(--mute);font-weight:400;white-space:normal;max-width:190px}.co1{color:var(--mute);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -141,6 +142,8 @@ tr.clk{cursor:pointer}
 </div>
 <script>
 const $=s=>document.querySelector(s);
+let NAMES={};function nm(t){let n=NAMES[String(t).toUpperCase()]||"";return n.replace(/\s+-\s+(Class [A-Z] )?(Common|Ordinary|American Depositary|Depositary|Units?|Shares?|Subordinate|Warrants?|Rights?)[^-]*$/i,"").replace(/,?\s+(Inc|Corp|Corporation|Ltd|Limited|PLC|N\.V|S\.A|LLC|Co|Company|Holdings)\.?$/i,"").replace(/[\s,&]+$/,"")}
+function tkc(t){const n=nm(t);return "<b>"+esc(t)+"</b>"+(n?'<div class="co">'+esc(n)+"</div>":"")}
 let SPEC=null, group="Guide", job=null, timer=null, curAction=null, curVals={}, lastOut="";
 const GROUPS=["Guide","Find","Results","Saved news","Trade results","Run history","Plan","Size & check","Monitor","Research","Settings"];
 const FLOW=["1 Find","2 News","3 Entry","4 Exit plan","5 Time Machine","6 Size","7 Risk","8 Order in Claude"];
@@ -180,14 +183,15 @@ function renderGuide(){
 }
 const LAB={breakout_20d:"20-day breakout",bull_flag:"Bull flag",reclaim_ma20:"Reclaimed 20-day avg",oversold:"Oversold",oversold_bounce:"Oversold bounce",orb:"Opening-range breakout"};
 const COLS={
- daily:[["symbol","Ticker"],["price","Price",1],["setups","Setups"],["rsi","RSI",1],["volume","Volume",1],["dollars","$ Traded",1],["close_date","Close date"]],
- orb:[["symbol","Ticker"],["price","Price",1],["at","Broke out at"],["or_low","Range low",1],["or_high","Range high",1],["range_pct","Range size",1],["pct_over","% over range",1],["stop","Stop (range mid)",1],["risk","Risk per share",1],["target","1R target",1]]};
+ daily:[["symbol","Ticker"],["name","Company"],["price","Price",1],["setups","Setups"],["rsi","RSI",1],["volume","Volume",1],["dollars","$ Traded",1],["close_date","Close date"]],
+ orb:[["symbol","Ticker"],["name","Company"],["price","Price",1],["at","Broke out at"],["or_low","Range low",1],["or_high","Range high",1],["range_pct","Range size",1],["pct_over","% over range",1],["stop","Stop (range mid)",1],["risk","Risk per share",1],["target","1R target",1]]};
 let WL=null, SEL=new Set(), sortKey=null, sortDir=1, qText="", setupF=new Set();
 const esc=x=>String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money=n=>n==null?"":"$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const big=n=>n==null?"":n>=1e9?"$"+(n/1e9).toFixed(2)+"B":"$"+(n/1e6).toFixed(1)+"M";
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2400)}
 function rv(h,k){
+  if(k==="name")return nm(h.symbol);
   if(k==="dollars")return h.volume!=null&&h.price!=null?h.price*h.volume:null;
   if(k==="range_pct")return h.or_high&&h.or_low&&h.price?(h.or_high-h.or_low)/h.price*100:null;
   if(k==="stop")return h.or_high!=null&&h.or_low!=null?(h.or_high+h.or_low)/2:null;
@@ -195,7 +199,7 @@ function rv(h,k){
   if(k==="target"){const k2=rv(h,"risk");return k2!=null?h.price+k2:null}
   return h[k]}
 function cellHtml(h,k){const v=rv(h,k);
- switch(k){case"symbol":return '<b class="sym" title="Click to copy this ticker" style="cursor:copy">'+esc(v)+"</b>";
+ switch(k){case"name":return '<span class="co1">'+esc(v)+"</span>";case"symbol":return '<b class="sym" title="Click to copy this ticker" style="cursor:copy">'+esc(v)+"</b>";
   case"price":case"or_low":case"or_high":case"stop":case"risk":case"target":return money(v);
   case"range_pct":return v==null?"":Number(v).toFixed(2)+"%";
   case"setups":return (v||[]).map(x=>'<span class="chip">'+esc(LAB[x]||x)+"</span>").join("");
@@ -209,7 +213,7 @@ function saveSel(){try{localStorage.setItem(selKey(),JSON.stringify([...SEL]))}c
 function loadSel(){try{return new Set(JSON.parse(localStorage.getItem(selKey())||"[]"))}catch(e){return new Set()}}
 function shown(){
   const hits=WL.hits||[], mode=WL.mode==="orb"?"orb":"daily";
-  let rows=hits.filter(h=>(!qText||h.symbol.includes(qText))&&(!setupF.size||(h.setups||[]).some(x=>setupF.has(x))));
+  let rows=hits.filter(h=>(!qText||h.symbol.includes(qText)||nm(h.symbol).toUpperCase().includes(qText))&&(!setupF.size||(h.setups||[]).some(x=>setupF.has(x))));
   if(sortKey){const f=a=>{const v=rv(a,sortKey);return Array.isArray(v)?v.join(","):v};
     rows=rows.slice().sort((a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (x<y?-1:x>y?1:0)*sortDir})}
   return rows}
@@ -221,7 +225,7 @@ async function renderResults(){
   const mode=WL.mode==="orb"?"orb":"daily";SEL=loadSel();qText="";setupF=new Set();sortKey=null;sortDir=1;
   const chips=mode==="daily"?Object.keys(LAB).filter(k=>k!=="orb"&&hits.some(h=>(h.setups||[]).includes(k))):[];
   m.innerHTML=`<p class="meta"><b>${mode==="orb"?"Opening-range breakouts":"Daily setups"}</b> · ${hits.length} hits · ${WL.as_of?WL.as_of+" · ":""}scanned ${WL.scanned||"?"} of ${WL.universe||"?"} · saved ${esc((WL.created_at||"").replace("T"," ").replace("Z"," UTC"))}</p>
-  <div class="toolbar"><input type="text" id="q" placeholder="Search ticker"> ${chips.map(k=>`<button class="mini chipf" data-k="${k}">${LAB[k]}</button>`).join("")}${chips.length?'<span class="sep"></span>':""}
+  <div class="toolbar"><input type="text" id="q" placeholder="Search ticker or company"> ${chips.map(k=>`<button class="mini chipf" data-k="${k}">${LAB[k]}</button>`).join("")}${chips.length?'<span class="sep"></span>':""}
    <button class="mini" id="top10">Select top 10 shown</button><button class="mini" id="selall">Select all shown</button><button class="mini" id="clr">Clear</button><span class="sep"></span>
    <span id="cnt" class="status"></span></div>
   <div class="toolbar"><button class="mini act" id="toNews">Send to News</button><button class="mini act" id="toEntry">Check entry for ticked</button><button class="mini act" id="shortlist">Save shortlist</button><button class="mini act" id="copyAll">Copy all shown</button><button class="mini" id="copyT">Copy ticked</button><label class="chk" style="margin:0 0 0 4px">Separator <select id="sep" style="width:auto;padding:5px 8px"><option value=" ">space</option><option value=",">comma</option><option value="\n">new line</option></select></label><span class="status">Sort by clicking a column heading.</span></div>
@@ -291,7 +295,7 @@ function buildBrief(d,asked){
   let h=`<div class="tools"><button class="mini bcopy">Copy summary</button><button class="mini braw">Show raw data</button></div>`+LEGEND;
   if(!rows.length)h+=`<h4>Nothing new</h4><p>No headlines in the look-back window that you haven't already seen. Tick "Include items already shown before" or raise the hours, then Run again. Earlier results are kept under Saved news.</p>`;
   else{
-    h+=`<h4>Summary</h4><table class="sum"><tr><th>Ticker</th><th>Price</th><th>Today</th><th>Verdict</th><th>Why</th></tr>`+rows.map(x=>`<tr><td><b>${esc(x.t)}</b></td><td>${x.mv?money(x.mv.price):""}</td><td class="${x.mv?(x.mv.pct>=0?"up":"dn"):""}">${x.mv?(x.mv.pct>0?"+":"")+x.mv.pct.toFixed(2)+"%":""}</td><td><span class="verdict ${x.jd.v}">${x.jd.label}</span></td><td class="why">${esc(x.jd.why)}</td></tr>`).join("")+`</table>`;
+    h+=`<h4>Summary</h4><table class="sum"><tr><th>Ticker</th><th>Price</th><th>Today</th><th>Verdict</th><th>Why</th></tr>`+rows.map(x=>`<tr><td>${tkc(x.t)}</td><td>${x.mv?money(x.mv.price):""}</td><td class="${x.mv?(x.mv.pct>=0?"up":"dn"):""}">${x.mv?(x.mv.pct>0?"+":"")+x.mv.pct.toFixed(2)+"%":""}</td><td><span class="verdict ${x.jd.v}">${x.jd.label}</span></td><td class="why">${esc(x.jd.why)}</td></tr>`).join("")+`</table>`;
     rows.forEach(x=>{
       const flagged=x.its.filter(i=>(i.tags||[]).some(t=>RED.includes(t))||(i.important&&/SEC/i.test(i.source||"")));
       const rest=x.its.filter(i=>!flagged.includes(i));
@@ -332,7 +336,7 @@ function showEntry(d,raw,tgt){
   const trig=rows.filter(x=>x.st==="triggered").map(x=>x.t);
   let h=`<div class="tools"><button class="mini" id="ecopy">Copy triggered tickers</button><button class="mini braw">Show raw data</button></div>
   <details class="legend" open><summary><b>What the statuses mean</b></summary><div class="lg"><div><span class="verdict green">TRIGGERED</span> A 5-minute bar has closed above the opening-range high. The entry signal has fired. Next: click Use this, then Exit planner.</div><div><span class="verdict amber">WAITING</span> No close above the range yet, or the range is still forming. Check again in a few minutes.</div><div><span class="verdict grey">EXPIRED</span> The entry window ended without a trigger (after 3:30 PM or the market is closed). Skip it.</div><div><span class="verdict red">ERROR</span> No chart data came back for that ticker.</div></div></details>
-  <h4>${trig.length} of ${rows.length} triggered</h4><table class="sum"><tr><th>Ticker</th><th>Status</th><th>Trigger time</th><th>Price</th><th>Over range</th><th>Level</th><th>Last close</th><th>Why</th><th></th></tr>`+rows.map(x=>{const L=ELAB[x.st]||ELAB.error,t=x.res.trigger||{},l=x.res.last||{};return`<tr><td><b>${esc(x.t)}</b></td><td><span class="verdict ${L[1]}">${L[0]}</span></td><td>${esc(t.time||"")}</td><td>${t.price!=null?money(t.price):""}</td><td>${t.pct_over!=null?"+"+t.pct_over+"%":""}</td><td>${x.res.level!=null?money(x.res.level):""}</td><td>${l.close!=null?money(l.close)+(l.vs_level_pct!=null?" ("+(l.vs_level_pct>0?"+":"")+l.vs_level_pct+"%)":""):""}</td><td class="why" style="white-space:normal">${esc(x.err||x.res.reason||"")}</td><td>${x.st==="triggered"?`<button class="go2 use" data-s="${esc(x.t)}">Use this</button>`:""}</td></tr>`}).join("")+`</table><div class="fine">Free Yahoo bars, unofficial and can lag a minute or two. Nothing was placed.</div>`;
+  <h4>${trig.length} of ${rows.length} triggered</h4><table class="sum"><tr><th>Ticker</th><th>Status</th><th>Trigger time</th><th>Price</th><th>Over range</th><th>Level</th><th>Last close</th><th>Why</th><th></th></tr>`+rows.map(x=>{const L=ELAB[x.st]||ELAB.error,t=x.res.trigger||{},l=x.res.last||{};return`<tr><td>${tkc(x.t)}</td><td><span class="verdict ${L[1]}">${L[0]}</span></td><td>${esc(t.time||"")}</td><td>${t.price!=null?money(t.price):""}</td><td>${t.pct_over!=null?"+"+t.pct_over+"%":""}</td><td>${x.res.level!=null?money(x.res.level):""}</td><td>${l.close!=null?money(l.close)+(l.vs_level_pct!=null?" ("+(l.vs_level_pct>0?"+":"")+l.vs_level_pct+"%)":""):""}</td><td class="why" style="white-space:normal">${esc(x.err||x.res.reason||"")}</td><td>${x.st==="triggered"?`<button class="go2 use" data-s="${esc(x.t)}">Use this</button>`:""}</td></tr>`}).join("")+`</table><div class="fine">Free Yahoo bars, unofficial and can lag a minute or two. Nothing was placed.</div>`;
   o.innerHTML=h;o.classList.add("brief");o.scrollTop=0;
   o.querySelector("#ecopy").onclick=async()=>{if(!trig.length)return toast("Nothing triggered yet");try{await navigator.clipboard.writeText(trig.join(" "));toast("Copied "+trig.length+" triggered ticker"+(trig.length>1?"s":""))}catch(e){toast("Copy blocked by the browser")}};
   o.querySelector(".braw").onclick=()=>{o.classList.remove("brief");o.textContent=raw};
@@ -345,7 +349,7 @@ async function renderSaved(){
   if(!Array.isArray(list)||!list.length){m.innerHTML='<div class="card"><h3>No saved news yet</h3><p>Every time you run the News monitor, the briefing is saved here automatically so you can come back to it after running other tools.</p><button class="run" id="gofind">Go to Find</button></div>';$("#gofind").onclick=()=>jump("Find","news");return}
   const latest={};list.slice().reverse().forEach(run=>(run.rows||[]).forEach(x=>{latest[x.t]=Object.assign({},x,{at:run.saved_at,id:run.id})}));
   const lrows=Object.values(latest).sort((a,b)=>(VORD[a.v]-VORD[b.v])||a.t.localeCompare(b.t));
-  let h=`<div class="card"><h3>Latest verdict per ticker</h3><p>The most recent News result for each ticker, across all your saved runs. Click a row to open that briefing.</p><div class="tbl-wrap" style="max-height:300px"><table class="rgrid"><thead><tr><th class="nosort">Ticker</th><th class="nosort">Verdict</th><th class="nosort">Why</th><th class="nosort num">Price</th><th class="nosort num">Today</th><th class="nosort">Checked (ET)</th></tr></thead><tbody>${lrows.map(x=>`<tr class="clk" data-id="${esc(x.id)}"><td><b>${esc(x.t)}</b></td><td><span class="verdict ${x.v}">${esc(x.label)}</span></td><td style="white-space:normal;color:var(--mute)">${esc(x.why)}</td><td class="num">${x.price!=null?money(x.price):""}</td><td class="num ${x.pct==null?"":x.pct>=0?"up":"dn"}">${x.pct!=null?(x.pct>0?"+":"")+x.pct.toFixed(2)+"%":""}</td><td>${esc(etTime(x.at))}</td></tr>`).join("")}</tbody></table></div></div>
+  let h=`<div class="card"><h3>Latest verdict per ticker</h3><p>The most recent News result for each ticker, across all your saved runs. Click a row to open that briefing.</p><div class="tbl-wrap" style="max-height:300px"><table class="rgrid"><thead><tr><th class="nosort">Ticker</th><th class="nosort">Verdict</th><th class="nosort">Why</th><th class="nosort num">Price</th><th class="nosort num">Today</th><th class="nosort">Checked (ET)</th></tr></thead><tbody>${lrows.map(x=>`<tr class="clk" data-id="${esc(x.id)}"><td>${tkc(x.t)}</td><td><span class="verdict ${x.v}">${esc(x.label)}</span></td><td style="white-space:normal;color:var(--mute)">${esc(x.why)}</td><td class="num">${x.price!=null?money(x.price):""}</td><td class="num ${x.pct==null?"":x.pct>=0?"up":"dn"}">${x.pct!=null?(x.pct>0?"+":"")+x.pct.toFixed(2)+"%":""}</td><td>${esc(etTime(x.at))}</td></tr>`).join("")}</tbody></table></div></div>
   <div class="card"><h3>All saved runs</h3><p>Newest first. The last 100 runs are kept in <code>trader\\ui-history</code> on your PC.</p><div class="tbl-wrap" style="max-height:260px"><table class="rgrid"><thead><tr><th class="nosort">Saved (ET)</th><th class="nosort">Tickers</th><th class="nosort">Look-back</th><th class="nosort">Verdicts</th></tr></thead><tbody>${list.map(run=>{const c={red:0,amber:0,green:0,grey:0};(run.rows||[]).forEach(x=>c[x.v]++);const tk=(run.tickers||[]);return`<tr class="clk" data-id="${esc(run.id)}"><td>${esc(etTime(run.saved_at))}</td><td>${esc(tk.slice(0,8).join(" "))}${tk.length>8?" +"+(tk.length-8):""}</td><td>${run.hours?esc(run.hours)+"h":""}</td><td>${c.red?`<span class="vc red">${c.red} RED</span>`:""}${c.amber?`<span class="vc amber">${c.amber} CAUTION</span>`:""}${c.green?`<span class="vc green">${c.green} OK</span>`:""}${c.grey?`<span class="vc grey">${c.grey} NO DATA</span>`:""}</td></tr>`}).join("")}</tbody></table></div></div>
   <div class="savedbrief brief" id="savedbrief"><p style="color:var(--mute)">Click a row above to open a briefing.</p></div>`;
   m.innerHTML=h;
@@ -472,7 +476,7 @@ async function refreshMode(){
   const r=await api("/api/config");const m=$("#mode");
   const paper=r.config.paper!==false;m.textContent=paper?"PAPER":"LIVE";m.className="badge "+(paper?"paper":"live");
 }
-(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-29.6"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
+(async()=>{SPEC=await api("/api/spec");try{NAMES=await api("/api/names")||{}}catch(e){}if(SPEC.version!=="2026-10-29.7"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
 </script>
 </body>
 </html>
