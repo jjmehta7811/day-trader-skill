@@ -194,7 +194,7 @@ function rv(h,k){
   if(k==="target"){const k2=rv(h,"risk");return k2!=null?h.price+k2:null}
   return h[k]}
 function cellHtml(h,k){const v=rv(h,k);
- switch(k){case"symbol":return "<b>"+esc(v)+"</b>";
+ switch(k){case"symbol":return '<b class="sym" title="Click to copy this ticker" style="cursor:copy">'+esc(v)+"</b>";
   case"price":case"or_low":case"or_high":case"stop":case"risk":case"target":return money(v);
   case"range_pct":return v==null?"":Number(v).toFixed(2)+"%";
   case"setups":return (v||[]).map(x=>'<span class="chip">'+esc(LAB[x]||x)+"</span>").join("");
@@ -223,7 +223,7 @@ async function renderResults(){
   <div class="toolbar"><input type="text" id="q" placeholder="Search ticker"> ${chips.map(k=>`<button class="mini chipf" data-k="${k}">${LAB[k]}</button>`).join("")}${chips.length?'<span class="sep"></span>':""}
    <button class="mini" id="top10">Select top 10 shown</button><button class="mini" id="selall">Select all shown</button><button class="mini" id="clr">Clear</button><span class="sep"></span>
    <span id="cnt" class="status"></span></div>
-  <div class="toolbar"><button class="mini act" id="toNews">Send to News</button><button class="mini act" id="shortlist">Save shortlist</button><button class="mini" id="copyT">Copy tickers</button><span class="status">Sort by clicking a column heading.</span></div>
+  <div class="toolbar"><button class="mini act" id="toNews">Send to News</button><button class="mini act" id="shortlist">Save shortlist</button><button class="mini act" id="copyAll">Copy all shown</button><button class="mini" id="copyT">Copy ticked</button><label class="chk" style="margin:0 0 0 4px">Separator <select id="sep" style="width:auto;padding:5px 8px"><option value=" ">space</option><option value=",">comma</option><option value="\n">new line</option></select></label><span class="status">Sort by clicking a column heading.</span></div>
   <div class="tbl-wrap"><table class="rgrid"><thead><tr><th class="nosort"><input type="checkbox" id="hdrchk" title="Select all shown"></th>${COLS[mode].map(c=>`<th class="${c[2]?"num":""}" data-k="${c[0]}">${c[1]}<span class="arr"></span></th>`).join("")}<th class="nosort">Next step</th></tr></thead><tbody id="tb"></tbody></table></div>${rawBlock()}`;
   $("#q").oninput=e=>{qText=e.target.value.trim().toUpperCase();draw()};
   document.querySelectorAll(".chipf").forEach(b=>b.onclick=()=>{const k=b.dataset.k;setupF.has(k)?setupF.delete(k):setupF.add(k);b.classList.toggle("on");draw()});
@@ -233,10 +233,17 @@ async function renderResults(){
   $("#clr").onclick=()=>{SEL.clear();saveSel();draw()};
   $("#hdrchk").onchange=e=>{shown().forEach(h=>e.target.checked?SEL.add(h.symbol):SEL.delete(h.symbol));saveSel();draw()};
   $("#toNews").onclick=()=>{if(!SEL.size)return toast("Tick at least one ticker first");sendTo("news","tickers","Find",[...SEL])};
-  $("#copyT").onclick=async()=>{if(!SEL.size)return toast("Tick at least one ticker first");try{await navigator.clipboard.writeText([...SEL].join(" "));toast("Copied "+SEL.size+" tickers")}catch(e){toast("Copy blocked by the browser")}};
+  try{const sv=localStorage.getItem("sep");if(sv!==null)$("#sep").value=sv}catch(e){}
+  $("#sep").onchange=e=>{try{localStorage.setItem("sep",e.target.value)}catch(x){}};
+  const copyList=async(list,what)=>{if(!list.length)return toast("Nothing to copy");const t=list.join($("#sep").value);
+    try{await navigator.clipboard.writeText(t)}catch(e){const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy")}catch(x){}ta.remove()}
+    toast("Copied "+list.length+" "+what+" ticker"+(list.length>1?"s":"")+". Paste into any Ticker box")};
+  $("#copyAll").onclick=()=>copyList(shown().map(h=>h.symbol),"shown");
+  $("#copyT").onclick=()=>copyList([...SEL],"ticked");
   $("#shortlist").onclick=async()=>{if(!SEL.size)return toast("Tick at least one ticker first");const r=await api("/api/shortlist",{tickers:[...SEL]});toast(r.error||("Saved "+r.count+" tickers to trader/shortlist.json"))};
   $("#tb").onclick=e=>{const t=e.target;
     if(t.matches("input.rc")){t.checked?SEL.add(t.dataset.s):SEL.delete(t.dataset.s);saveSel();draw(true)}
+    else if(t.matches(".sym")){navigator.clipboard.writeText(t.textContent).then(()=>toast("Copied "+t.textContent),()=>{})}
     else if(t.matches(".go2")){sendTo(t.dataset.c,t.dataset.f,t.dataset.g,[t.dataset.s])}};
   draw();
 }
@@ -251,6 +258,7 @@ function draw(keepScroll){
   document.querySelectorAll(".rgrid th[data-k]").forEach(th=>{th.classList.toggle("sorted",th.dataset.k===sortKey);th.querySelector(".arr").textContent=th.dataset.k===sortKey?(sortDir>0?" ▲":" ▼"):""});
   const all=rows.length&&rows.every(h=>SEL.has(h.symbol));$("#hdrchk").checked=!!all;
   $("#cnt").textContent=SEL.size+" ticked · "+rows.length+" of "+(WL.hits||[]).length+" shown";
+  $("#copyAll").textContent="Copy all shown ("+rows.length+")";$("#copyT").textContent="Copy ticked ("+SEL.size+")";
 }
 const RED=["earnings","halt","risk","deal","legal","people"], AMB=["capital","regulatory","analyst"];
 const TAGWORD={earnings:"earnings",halt:"trading halt",risk:"risk event",deal:"deal / M&A",legal:"legal",people:"leadership change",capital:"dividend / buyback / offering",regulatory:"FDA / regulatory",analyst:"analyst action",macro:"market-wide"};
@@ -416,7 +424,7 @@ async function refreshMode(){
   const r=await api("/api/config");const m=$("#mode");
   const paper=r.config.paper!==false;m.textContent=paper?"PAPER":"LIVE";m.className="badge "+(paper?"paper":"live");
 }
-(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-29.1"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
+(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-29.2"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
 </script>
 </body>
 </html>

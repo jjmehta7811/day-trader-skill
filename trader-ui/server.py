@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-VERSION = "2026-10-29.1"
+VERSION = "2026-10-29.2"
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 def T(name, label, flag=None, kind="text", ph="", options=None, positional=False, multi=False, required=False, default=""):
