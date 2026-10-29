@@ -12,3 +12,5 @@ A local web page for the day-trader-skill tools. No command prompt needed after 
 It never places or approves orders. "Show order tickets" is read only; your yes still goes to Claude.
 
 **Results tab:** after a Daily setups or Opening-range scan finishes, the UI opens a table with a checkbox per stock. Sort by clicking a heading, filter by setup or ticker, tick names, then Send to News, Save shortlist (trader/shortlist.json) or Copy tickers. Ticks are remembered per scan.
+
+**Saved news tab:** every News run is saved to trader\ui-history (last 100). The tab shows the latest verdict per ticker and lets you reopen any past briefing. The briefing includes a legend for RED FLAG, CAUTION, NO FLAGS and NO DATA.

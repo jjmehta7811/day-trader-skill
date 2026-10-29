@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-VERSION = "2026-10-28.4"
+VERSION = "2026-10-29.1"
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 def T(name, label, flag=None, kind="text", ph="", options=None, positional=False, multi=False, required=False, default=""):
@@ -218,6 +218,22 @@ class H(BaseHTTPRequestHandler):
             cfg = self.read_cfg()
             return self._json(200, dict(keys=CONFIG_KEYS, config={k: cfg.get(k) for k in CONFIG_KEYS},
                                         exists=self.cfg_path().exists()))
+        if path == "/api/history" or path.startswith("/api/history/"):
+            hd = self.workdir / "trader" / "ui-history"
+            if path == "/api/history":
+                out = []
+                for f in sorted(hd.glob("news-*.json"), reverse=True)[:100] if hd.exists() else []:
+                    try:
+                        d = json.loads(f.read_text(encoding="utf-8"))
+                        out.append({k: d.get(k) for k in ("id", "saved_at", "tickers", "hours", "rows")})
+                    except Exception:
+                        pass
+                return self._json(200, out)
+            hid = path.rsplit("/", 1)[1]
+            f = hd / (hid + ".json")
+            if not re.match(r"^news-\d{8}-\d{6}(-\d+)?$", hid) or not f.exists():
+                return self._json(404, {"error": "not found"})
+            return self._json(200, json.loads(f.read_text(encoding="utf-8")))
         if path in ("/api/watchlist", "/api/shortlist"):
             f = self.workdir / "trader" / ("watchlist.json" if path.endswith("watchlist") else "shortlist.json")
             try:
@@ -256,6 +272,24 @@ class H(BaseHTTPRequestHandler):
                 try: j["proc"].kill()
                 except Exception: pass
             return self._json(200, {"ok": True})
+        if path == "/api/history":
+            if data.get("kind") != "news" or not isinstance(data.get("data"), dict):
+                return self._json(400, {"error": "bad history record"})
+            hd = self.workdir / "trader" / "ui-history"
+            hd.mkdir(parents=True, exist_ok=True)
+            base = "news-" + time.strftime("%Y%m%d-%H%M%S")
+            hid, n = base, 1
+            while (hd / (hid + ".json")).exists():
+                n += 1
+                hid = "%s-%d" % (base, n)
+            rec = {"id": hid, "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                   "tickers": [str(t).upper() for t in (data.get("tickers") or [])][:200],
+                   "hours": data.get("hours"), "rows": data.get("rows") or [], "data": data["data"]}
+            (hd / (hid + ".json")).write_text(json.dumps(rec), encoding="utf-8")
+            for old in sorted(hd.glob("news-*.json"))[:-100]:
+                try: old.unlink()
+                except Exception: pass
+            return self._json(200, {"ok": True, "id": hid})
         if path == "/api/shortlist":
             tk = [str(t).upper() for t in (data.get("tickers") or [])]
             if not tk or any(not re.match(r"^[A-Z0-9.\-]{1,10}$", t) for t in tk):

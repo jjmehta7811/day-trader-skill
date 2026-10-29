@@ -110,6 +110,15 @@ details.raw pre{background:var(--out);color:var(--outink);padding:10px;border-ra
 .brief details{margin-top:6px;font-size:13px}
 .brief .fine{color:var(--mute);font-size:12px;margin-top:10px}
 .brief .tools{display:flex;gap:8px;margin-bottom:10px}
+.legend{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:12px;background:var(--bg);font-size:13px}
+.legend summary{cursor:pointer}
+.legend .lg div{margin:6px 0;color:var(--ink)}
+.legend .lg .verdict{margin-right:6px}
+.legend .lgn{color:var(--mute);font-size:12.5px}
+tr.clk{cursor:pointer}
+.vc{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:99px;color:#fff;margin-right:4px}
+.vc.red{background:#c4320a}.vc.amber{background:#b54708}.vc.green{background:#0b7a4f}.vc.grey{background:#667085}
+.savedbrief{margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px 16px}
 </style>
 </head>
 <body>
@@ -132,7 +141,7 @@ details.raw pre{background:var(--out);color:var(--outink);padding:10px;border-ra
 <script>
 const $=s=>document.querySelector(s);
 let SPEC=null, group="Guide", job=null, timer=null, curAction=null, curVals={}, lastOut="";
-const GROUPS=["Guide","Find","Results","Plan","Size & check","Monitor","Research","Settings"];
+const GROUPS=["Guide","Find","Results","Saved news","Plan","Size & check","Monitor","Research","Settings"];
 const FLOW=["1 Find","2 News","3 Entry","4 Exit plan","5 Time Machine","6 Size","7 Risk","8 Order in Claude"];
 
 async function api(p,body){const r=await fetch(p,body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:undefined);return r.json()}
@@ -145,7 +154,7 @@ const GUIDE=[
  {t:"Before 9:30 AM",sub:"optional",w:[480,570],title:"Look at pre-market setups",how:"Find, then the Daily setups card, then Run (1 to 3 minutes). When it finishes you land on Results: tick the names you like and click Send to News.",go:["Find","scan_daily","Go to card"]},
  {t:"9:30 to 10:15 AM",sub:"wait",w:[570,615],title:"Do nothing: the opening range is forming",how:"The first 15 minutes set the range. Do not enter yet.",go:null},
  {t:"10:15 AM",sub:"scan",w:[615,630],title:"Scan for breakouts",how:"Find, then Opening-range breakouts, then Run. You land on Results: tick one to three names, then click Send to News.",go:["Find","scan_orb","Go to card"]},
- {t:"10:15 to 10:30 AM",sub:"check news",w:[615,630],title:"Check the news on each pick",how:"Find, then News monitor, type the ticker, Run. Skip the stock if you see earnings, a deal, an 8-K or a halt.",go:["Find","news","Go to card"]},
+ {t:"10:15 to 10:30 AM",sub:"check news",w:[615,630],title:"Check the news on each pick",how:"Find, then News monitor, type the ticker, Run. Skip the stock if you see a RED FLAG (earnings, a deal, an 8-K or a halt). Every run is saved under Saved news.",go:["Find","news","Go to card"]},
  {t:"10:15 AM onward",sub:"entry",w:[615,810],title:"Ask the Entry timer",how:"Plan, then Entry timer, type the ticker, keep Save result ticked, Run. You need the word triggered. If it says waiting, run it again in a few minutes. If expired, skip it.",go:["Plan","entry_check","Go to card"]},
  {t:"When triggered",sub:"plan the exit",w:[615,810],title:"Set the stop and target",how:"Plan, then Exit planner. Leave the boxes empty and click Run. It reads your saved entry.",go:["Plan","exit_plan","Go to card"]},
  {t:"Then",sub:"odds",w:[615,810],title:"Run the Time Machine",how:"Plan, then Time Machine, Run. Read the odds. If it is close to a coin flip, skipping is a fine choice.",go:["Plan","tm_run","Go to card"]},
@@ -257,15 +266,20 @@ function judge(items,mv){
   if(mov||Object.keys(amb).length){const w=[];if(mov)w.push("big move today ("+(mv.pct>0?"+":"")+mv.pct.toFixed(2)+"%)");if(Object.keys(amb).length)w.push(parts(amb));return{v:"amber",label:"CAUTION",why:w.join("; ")}}
   if(!items.length&&!mv)return{v:"grey",label:"NO DATA",why:"nothing returned"};
   return{v:"green",label:"NO FLAGS",why:"no earnings, deal, legal, halt or leadership headlines found"}}
-function showBrief(d,raw){
-  const o=$("#out");const items=d.items||[];const mvs={};(d.moves||[]).forEach(m=>mvs[m.ticker]=m);
-  const asked=String(curVals.tickers||"").toUpperCase().split(/[\s,]+/).filter(Boolean);
+const LEGEND=`<details class="legend" open><summary><b>What the verdicts mean</b></summary><div class="lg">
+<div><span class="verdict red">RED FLAG</span> A headline mentions earnings, a deal or M&amp;A, a lawsuit, a trading halt, a risk event or a leadership change, or there is an important SEC 8-K. Open the headline before trading. Usually skip.</div>
+<div><span class="verdict amber">CAUTION</span> No red flags, but the stock moved 3% or more today, or has a dividend, buyback, offering, FDA or analyst headline. Trade smaller or wait for confirmation.</div>
+<div><span class="verdict green">NO FLAGS</span> None of the above was found. This is not a buy signal, only "no known landmine".</div>
+<div><span class="verdict grey">NO DATA</span> Nothing came back: a wrong ticker or the news feed was down.</div>
+<div class="lgn">Today = move vs yesterday's close. MOVING = 3% or more. Market-wide headlines (Fed, index roundups) never set a verdict. Verdicts are keyword checks, not a reading of the story.</div></div></details>`;
+function buildBrief(d,asked){
+  const items=d.items||[];const mvs={};(d.moves||[]).forEach(m=>mvs[m.ticker]=m);
   const seen=new Set(asked);Object.keys(mvs).forEach(t=>seen.add(t));items.forEach(i=>(i.touches&&i.touches.length?i.touches:[i.ticker]).forEach(t=>seen.add(t)));
   const mkt=items.filter(i=>(i.tags||[]).includes("macro"));const own=items.filter(i=>!(i.tags||[]).includes("macro"));
   const tk=[...seen].filter(t=>asked.length?asked.includes(t):true).sort((a,b)=>asked.indexOf(a)-asked.indexOf(b));
   const rows=tk.map(t=>{const its=own.filter(i=>(i.touches&&i.touches.length?i.touches:[i.ticker]).includes(t));const jd=judge(its,mvs[t]);return{t,its,mv:mvs[t],jd}});
-  let h=`<div class="tools"><button class="mini" id="bcopy">Copy summary</button><button class="mini" id="braw">Show raw data</button></div>`;
-  if(!rows.length)h+=`<h4>Nothing new</h4><p>No headlines in the look-back window that you haven't already seen. Tick "Include items already shown before" or raise the hours, then Run again.</p>`;
+  let h=`<div class="tools"><button class="mini bcopy">Copy summary</button><button class="mini braw">Show raw data</button></div>`+LEGEND;
+  if(!rows.length)h+=`<h4>Nothing new</h4><p>No headlines in the look-back window that you haven't already seen. Tick "Include items already shown before" or raise the hours, then Run again. Earlier results are kept under Saved news.</p>`;
   else{
     h+=`<h4>Summary</h4><table class="sum"><tr><th>Ticker</th><th>Price</th><th>Today</th><th>Verdict</th><th>Why</th></tr>`+rows.map(x=>`<tr><td><b>${esc(x.t)}</b></td><td>${x.mv?money(x.mv.price):""}</td><td class="${x.mv?(x.mv.pct>=0?"up":"dn"):""}">${x.mv?(x.mv.pct>0?"+":"")+x.mv.pct.toFixed(2)+"%":""}</td><td><span class="verdict ${x.jd.v}">${x.jd.label}</span></td><td class="why">${esc(x.jd.why)}</td></tr>`).join("")+`</table>`;
     rows.forEach(x=>{
@@ -282,13 +296,41 @@ function showBrief(d,raw){
     if(mkt.length)h+=`<details class="tk"><summary><b>Market-wide headlines (${mkt.length})</b> Fed, macro, index roundups</summary><ul>${mkt.slice(0,15).map(i=>bullet(i,false)).join("")}</ul></details>`;
   }
   if((d.notes||[]).length)h+=`<div class="fine">${d.notes.map(esc).join("<br>")}</div>`;
-  h+=`<div class="fine">Verdicts come from keyword tags on headlines and SEC filings, not from reading the stories. A RED FLAG means open the headline and judge for yourself. A ticker can pick up another company's earnings headline. Not financial advice.</div>`;
-  o.innerHTML=h;o.classList.add("brief");o.scrollTop=0;
-  $("#bcopy").onclick=async()=>{const t=rows.map(x=>x.t+": "+x.jd.label+" ("+x.jd.why+")\n"+x.its.slice(0,6).map(i=>"  - "+etTime(i.time)+" "+i.title).join("\n")).join("\n\n");try{await navigator.clipboard.writeText(t);toast("Summary copied")}catch(e){toast("Copy blocked by the browser")}};
-  $("#braw").onclick=()=>{o.classList.remove("brief");o.textContent=raw};
+  h+=`<div class="fine">A RED FLAG means open the headline and judge for yourself. A ticker can pick up another company's earnings headline. Not financial advice.</div>`;
+  return{h,rows}}
+function wireBrief(box,html,rows,raw){
+  const c=box.querySelector(".bcopy"),w=box.querySelector(".braw");
+  if(c)c.onclick=async()=>{const t=rows.map(x=>x.t+": "+x.jd.label+" ("+x.jd.why+")\n"+x.its.slice(0,6).map(i=>"  - "+etTime(i.time)+" "+i.title).join("\n")).join("\n\n");try{await navigator.clipboard.writeText(t);toast("Summary copied")}catch(e){toast("Copy blocked by the browser")}};
+  if(w)w.onclick=()=>{box.innerHTML=`<div class="tools"><button class="mini bback">Back to briefing</button></div><pre style="white-space:pre-wrap;font:12px/1.4 Consolas,monospace;margin:0">${esc(raw)}</pre>`;box.querySelector(".bback").onclick=()=>{box.innerHTML=html;wireBrief(box,html,rows,raw)}};
+}
+function showBrief(d,raw){
+  const o=$("#out");
+  const asked=String(curVals.tickers||"").toUpperCase().split(/[\s,]+/).filter(Boolean);
+  const {h,rows}=buildBrief(d,asked);
+  o.innerHTML=h;o.classList.add("brief");o.scrollTop=0;wireBrief(o,h,rows,raw);
+  if(rows.length){
+    api("/api/history",{kind:"news",tickers:rows.map(x=>x.t),hours:curVals.hours||"",data:d,
+      rows:rows.map(x=>({t:x.t,v:x.jd.v,label:x.jd.label,why:x.jd.why,price:x.mv?x.mv.price:null,pct:x.mv?x.mv.pct:null,n:x.its.length}))})
+     .then(r=>{if(r&&r.ok)toast("Saved. Find it under Saved news")}).catch(()=>{});
+  }
+}
+const VORD={red:0,amber:1,green:2,grey:3};
+async function renderSaved(){
+  const m=$("#main");m.innerHTML='<div class="banner">Loading saved news…</div>';
+  const list=await api("/api/history");
+  if(!Array.isArray(list)||!list.length){m.innerHTML='<div class="card"><h3>No saved news yet</h3><p>Every time you run the News monitor, the briefing is saved here automatically so you can come back to it after running other tools.</p><button class="run" id="gofind">Go to Find</button></div>';$("#gofind").onclick=()=>jump("Find","news");return}
+  const latest={};list.slice().reverse().forEach(run=>(run.rows||[]).forEach(x=>{latest[x.t]=Object.assign({},x,{at:run.saved_at,id:run.id})}));
+  const lrows=Object.values(latest).sort((a,b)=>(VORD[a.v]-VORD[b.v])||a.t.localeCompare(b.t));
+  let h=`<div class="card"><h3>Latest verdict per ticker</h3><p>The most recent News result for each ticker, across all your saved runs. Click a row to open that briefing.</p><div class="tbl-wrap" style="max-height:300px"><table class="rgrid"><thead><tr><th class="nosort">Ticker</th><th class="nosort">Verdict</th><th class="nosort">Why</th><th class="nosort num">Price</th><th class="nosort num">Today</th><th class="nosort">Checked (ET)</th></tr></thead><tbody>${lrows.map(x=>`<tr class="clk" data-id="${esc(x.id)}"><td><b>${esc(x.t)}</b></td><td><span class="verdict ${x.v}">${esc(x.label)}</span></td><td style="white-space:normal;color:var(--mute)">${esc(x.why)}</td><td class="num">${x.price!=null?money(x.price):""}</td><td class="num ${x.pct==null?"":x.pct>=0?"up":"dn"}">${x.pct!=null?(x.pct>0?"+":"")+x.pct.toFixed(2)+"%":""}</td><td>${esc(etTime(x.at))}</td></tr>`).join("")}</tbody></table></div></div>
+  <div class="card"><h3>All saved runs</h3><p>Newest first. The last 100 runs are kept in <code>trader\\ui-history</code> on your PC.</p><div class="tbl-wrap" style="max-height:260px"><table class="rgrid"><thead><tr><th class="nosort">Saved (ET)</th><th class="nosort">Tickers</th><th class="nosort">Look-back</th><th class="nosort">Verdicts</th></tr></thead><tbody>${list.map(run=>{const c={red:0,amber:0,green:0,grey:0};(run.rows||[]).forEach(x=>c[x.v]++);const tk=(run.tickers||[]);return`<tr class="clk" data-id="${esc(run.id)}"><td>${esc(etTime(run.saved_at))}</td><td>${esc(tk.slice(0,8).join(" "))}${tk.length>8?" +"+(tk.length-8):""}</td><td>${run.hours?esc(run.hours)+"h":""}</td><td>${c.red?`<span class="vc red">${c.red} RED</span>`:""}${c.amber?`<span class="vc amber">${c.amber} CAUTION</span>`:""}${c.green?`<span class="vc green">${c.green} OK</span>`:""}${c.grey?`<span class="vc grey">${c.grey} NO DATA</span>`:""}</td></tr>`}).join("")}</tbody></table></div></div>
+  <div class="savedbrief brief" id="savedbrief"><p style="color:var(--mute)">Click a row above to open a briefing.</p></div>`;
+  m.innerHTML=h;
+  async function open(id){const run=await api("/api/history/"+id);const box=$("#savedbrief");if(!run||run.error){box.textContent="Could not open that run.";return}
+    const b=buildBrief(run.data,run.tickers||[]);box.innerHTML=`<p class="meta">Saved ${esc(etTime(run.saved_at))} ET · ${esc((run.tickers||[]).length)} tickers</p>`+b.h;wireBrief(box,box.innerHTML,b.rows,JSON.stringify(run.data,null,2));box.scrollIntoView({behavior:"smooth",block:"start"})}
+  m.querySelectorAll("tr.clk").forEach(tr=>tr.onclick=()=>open(tr.dataset.id));
 }
 function nav(){
-  document.querySelector(".wrap").classList.toggle("wide",group==="Results");
+  document.querySelector(".wrap").classList.toggle("wide",group==="Results"||group==="Saved news");
   $("#nav").innerHTML=GROUPS.map(g=>`<button class="${g===group?'on':''}" data-g="${g}">${g}</button>`).join("");
   document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{group=b.dataset.g;nav();render()});
 }
@@ -303,6 +345,7 @@ function render(){
   const m=$("#main");
   if(group==="Guide") return renderGuide();
   if(group==="Results") return renderResults();
+  if(group==="Saved news") return renderSaved();
   if(group==="Settings") return renderSettings();
   let html="";
   if(group==="Find"||group==="Plan") html+=`<ul class="steps">${FLOW.map(s=>`<li>${s}</li>`).join("")}</ul>`;
@@ -373,7 +416,7 @@ async function refreshMode(){
   const r=await api("/api/config");const m=$("#mode");
   const paper=r.config.paper!==false;m.textContent=paper?"PAPER":"LIVE";m.className="badge "+(paper?"paper":"live");
 }
-(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-28.4"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
+(async()=>{SPEC=await api("/api/spec");if(SPEC.version!=="2026-10-29.1"){const b=document.createElement("div");b.style.cssText="background:#c4320a;color:#fff;padding:10px 20px;font-weight:600";b.textContent="The UI program is out of date. Close the black command window, then double-click run-ui.bat again, then press Ctrl+F5 in this tab.";document.body.prepend(b)}$("#wd").textContent="Data: "+SPEC.workdir;nav();render();refreshMode();tickClock();setInterval(tickClock,20000)})();
 </script>
 </body>
 </html>
